@@ -26,6 +26,7 @@ typedef struct {
     XrCompositionLayerEquirect2KHR background[2];
     XrCompositionLayerQuad glow;
     XrCompositionLayerQuad video[2];
+    XrCompositionLayerQuad imageNav;
     XrCompositionLayerCylinderKHR cylinder[2];
     XrCompositionLayerQuad overlay;
     XrCompositionLayerQuad handle;
@@ -477,6 +478,23 @@ static void addBarButtonLayers(XrCtx* ctx, const FrameView* view, FrameLayers* l
     }
 }
 
+static void addImageNavLayer(XrCtx* ctx, const FrameView* view, FrameLayers* layers) {
+    if (!ctx->imageNavEnabled || !ctx->imageNavReady || ctx->pickerOpen
+            || ctx->cogOpen || ctx->kbOpen || ctx->exitConfirmOpen) return;
+    int state = ctx->imageNavPressed ? ctx->imageNavPressed + 2 : ctx->imageNavHover;
+    int pendingMask = (~ctx->imageNavDepthReadyMask) & 3;
+    if (pendingMask != 0) state = 4 + pendingMask;
+    if (state < 0 || state >= IMAGE_NAV_STATES) state = 0;
+    float width, height;
+    XrPosef pose;
+    imageNavPose(ctx, view->screenPose, &width, &height, &pose);
+    quadLayer(&layers->imageNav, layers->sharpenChain,
+              XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT,
+              ctx->imageNavSwapchains[state], IMAGE_NAV_TEX_W, IMAGE_NAV_TEX_H,
+              view->space, pose, width, height);
+    pushLayer(ctx, layers, &layers->imageNav);
+}
+
 // The prompt the exit button opens
 static void addExitPromptLayer(XrCtx* ctx, const FrameView* view, FrameLayers* layers) {
     // The prompt itself, on the pose frozen when it opened. Which sheet is
@@ -777,6 +795,11 @@ Java_com_limelight_binding_video_XrRenderer_nativeEndFrame(JNIEnv* env, jobject 
     if (ctx->separationOverride >= 0.0f) {
         separation = ctx->separationOverride;
     }
+    // A newly latched still must never be warped by the preceding image's
+    // depth. Keep it flat until the depth worker publishes the same generation.
+    if (atomic_load_explicit(&ctx->stillDepthPending, memory_order_acquire)) {
+        separation = 0.0f;
+    }
     // What is really in force, for the panel's thumb to read back
     ctx->separationCurrent = separation;
     if (ctx->distanceOverride > 0.0f) {
@@ -865,6 +888,7 @@ Java_com_limelight_binding_video_XrRenderer_nativeEndFrame(JNIEnv* env, jobject 
     addGlowLayer(ctx, &view, &layers);
     if (ctx->everRendered && ctx->shouldRender) {
         addVideoLayers(ctx, &view, &layers);
+        addImageNavLayer(ctx, &view, &layers);
         addOverlayLayer(ctx, &view, &layers);
         addHandleLayer(ctx, &view, &layers);
         addBarButtonLayers(ctx, &view, &layers);

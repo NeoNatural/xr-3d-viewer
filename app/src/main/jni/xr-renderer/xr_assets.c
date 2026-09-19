@@ -75,6 +75,14 @@ int createPointerSwapchain(XrCtx* ctx) {
                             &ctx->pointerImageCount)) {
         return 0;
     }
+    if (ctx->imageNavEnabled) {
+        for (int state = 0; state < IMAGE_NAV_STATES; state++) {
+            createArtSwapchain(ctx, IMAGE_NAV_TEX_W, IMAGE_NAV_TEX_H,
+                               "create image navigation swapchain",
+                               &ctx->imageNavSwapchains[state], &ctx->imageNavImages[state],
+                               &ctx->imageNavImageCounts[state]);
+        }
+    }
 
     // Handles get a swapchain each rather than a corner of the atlas, so there
     // is no image rect origin convention to guess at
@@ -184,6 +192,49 @@ static float edgeAlpha(float distance, float halfStroke) {
     if (a < 0.0f) return 0.0f;
     if (a > 1.0f) return 1.0f;
     return a;
+}
+
+static void buildImageNavArt(XrCtx* ctx) {
+    if (!ctx->imageNavEnabled) return;
+    unsigned char* px = calloc(IMAGE_NAV_TEX_W * IMAGE_NAV_TEX_H * 4, 1);
+    if (px == NULL) return;
+    int allReady = 1;
+    for (int state = 0; state < IMAGE_NAV_STATES; state++) {
+        int pendingMask = state >= 5 ? state - 4 : 0;
+        memset(px, 0, IMAGE_NAV_TEX_W * IMAGE_NAV_TEX_H * 4);
+        for (int y = 0; y < IMAGE_NAV_TEX_H; y++) {
+            for (int x = 0; x < IMAGE_NAV_TEX_W; x++) {
+                int side = x < IMAGE_NAV_TEX_W / 2 ? 0 : 1;
+                float cx = side == 0 ? 126.0f : 386.0f;
+                float dx = x + 0.5f - cx, dy = y + 0.5f - 56.0f;
+                float dist = sqrtf(dx * dx + dy * dy);
+                int lit = state == side + 1;
+                int down = state == side + 3;
+                int pending = (pendingMask & (1 << side)) != 0;
+                unsigned char* p = px + ((y * IMAGE_NAV_TEX_W) + x) * 4;
+                if (dist < 49.0f) {
+                    p[0] = pending ? 190 : down ? 40 : lit ? 38 : 20;
+                    p[1] = pending ? 35 : down ? 168 : lit ? 128 : 27;
+                    p[2] = pending ? 42 : down ? 226 : lit ? 178 : 39;
+                    p[3] = down ? 245 : lit ? 225 : 195;
+                }
+                float arrowX = side == 0 ? -dx : dx;
+                if (arrowX > -20 && arrowX < 22
+                        && fabsf(dy) < (20.0f - fabsf(arrowX + 4.0f)) * 0.92f) {
+                    p[0] = p[1] = p[2] = 255;
+                    p[3] = 255;
+                }
+                if (down && dist > 46.0f && dist < 52.0f) {
+                    p[0] = 83; p[1] = 211; p[2] = 255; p[3] = 240;
+                }
+            }
+        }
+        allReady &= uploadArt(ctx, ctx->imageNavSwapchains[state],
+                              ctx->imageNavImages[state], px,
+                              IMAGE_NAV_TEX_W, IMAGE_NAV_TEX_H);
+    }
+    ctx->imageNavReady = allReady;
+    free(px);
 }
 
 static void buildHandleArt(XrCtx* ctx) {
@@ -377,6 +428,7 @@ int uploadPointerArt(XrCtx* ctx) {
     free(px);
     if (ctx->pointerArtReady) {
         buildHandleArt(ctx);
+        buildImageNavArt(ctx);
     }
     return ctx->pointerArtReady;
 }

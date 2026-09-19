@@ -29,6 +29,7 @@ import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.limelight.binding.video.XrShared.*;
@@ -74,7 +75,8 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private final AtomicInteger pendingFrames = new AtomicInteger(0);
     private final float[] texMatrix = new float[16];
     private volatile boolean stopping;
-    private long videoFrameIndex;
+    private volatile long videoFrameIndex;
+    private final AtomicBoolean forceVideoRedraw = new AtomicBoolean();
 
     // Handoff to the depth thread. The frame loop fills the model input and
     // sets pending, the depth thread runs inference and uploads the result.
@@ -86,6 +88,14 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private boolean depthExit;
     private int skippedFrames;
     private volatile boolean depthReady;
+    private boolean fastStillImageDepth;
+    private final AtomicInteger stillImageGeneration = new AtomicInteger();
+    private final AtomicInteger pendingStillColorGeneration = new AtomicInteger(-1);
+    private volatile int latchedStillColorGeneration = -1;
+    private final AtomicReference<StillDepthFrame> pendingStillDepth = new AtomicReference<>();
+    private int captureStillGeneration;
+    private int publishedStillGeneration = -1;
+    private volatile boolean preparedStillDepthActive;
     private volatile long lastCaptureNs;
 
     // How far behind the picture the depth map is. The map warping a frame was
@@ -118,6 +128,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private final float[] inputState = new float[IN_SLOTS];
     private int heldButtons;
     private InputListener inputListener;
+    private boolean imageNavigationEnabled;
     private Context prefsContext;
     private PreferenceConfiguration prefConfig;
 
@@ -202,10 +213,72 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         void onVrKey(int code);
         // The exit prompt was confirmed, so the session is to end
         void onVrExit();
+        default void onVrImageNavigate(int direction) { }
     }
 
     public void setInputListener(InputListener listener) {
         this.inputListener = listener;
+    }
+
+    public void setImageNavigationEnabled(boolean enabled) {
+        imageNavigationEnabled = enabled;
+    }
+
+    /** Red navigation buttons indicate that the adjacent prepared depth is pending. */
+    public void setImageNavigationDepthReady(boolean leftReady, boolean rightReady) {
+        long ctx = nativeCtx;
+        if (ctx != 0) nativeSetImageNavigationDepthReady(ctx, leftReady, rightReady);
+    }
+
+    /** Use a low-startup-latency CPU model for a still image only. */
+    public void setFastStillImageDepth(boolean value) {
+        fastStillImageDepth = value;
+    }
+
+    private static final class StillDepthFrame {
+        final ByteBuffer rgb;
+        final ByteBuffer depth;
+        final int generation;
+
+        StillDepthFrame(ByteBuffer rgb, ByteBuffer depth, int generation) {
+            this.rgb = rgb;
+            this.depth = depth;
+            this.generation = generation;
+        }
+    }
+
+    /** Marks a hard still-image cut so video temporal smoothing cannot blend two pictures. */
+    public int beginStillImageTransition() {
+        int generation = stillImageGeneration.incrementAndGet();
+        pendingStillDepth.set(null);
+        preparedStillDepthActive = false;
+        long ctx = nativeCtx;
+        if (ctx != 0) nativeSetStillDepthPending(ctx, true);
+        return generation;
+    }
+
+    /** Associates the next SurfaceTexture frame with the current still-image cut. */
+    public void markStillImageFramePending(int generation) {
+        pendingStillColorGeneration.set(generation);
+    }
+
+    public boolean isStillImageFrameLatched(int generation) {
+        return latchedStillColorGeneration == generation;
+    }
+
+    public void allowStillDepthFallback() {
+        preparedStillDepthActive = false;
+        long ctx = nativeCtx;
+        if (ctx != 0) nativeSetStillDepthPending(ctx, false);
+        forceVideoRedraw.set(true);
+    }
+
+    /** Queues a prepared 256x256 MiDaS result for upload on the depth GL thread. */
+    public void publishStillDepth(ByteBuffer rgb, ByteBuffer depth, int generation) {
+        if (generation != stillImageGeneration.get()
+                || generation != latchedStillColorGeneration) return;
+        pendingStillDepth.set(new StillDepthFrame(rgb, depth, generation));
+        synchronized (depthLock) { depthLock.notifyAll(); }
     }
 
     /**
@@ -224,7 +297,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                                    boolean depthDebug, int convergence, int depthScale,
                                    boolean handTracking, int sharpenMode, boolean perfOverlay,
                                    boolean ambilight, int ambiLevel, boolean roomLight,
-                                   int envResTier);
+                                   int envResTier, boolean imageNavigation);
     private native void nativeSetCaptureDir(long ctx, String dir);
     private native int nativeGetTexId(long ctx);
     private native ByteBuffer nativeGetModelInput(long ctx);
@@ -232,6 +305,9 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private native long nativeCaptureDepthInput(long ctx, float[] texMatrix);
     private native long nativeFinishDepthCapture(long ctx);
     private native long nativeUploadDepth(long ctx);
+    private native long nativeUploadStillDepth(long ctx, ByteBuffer rgb, ByteBuffer depth);
+    private native void nativeResetStillDepthHistory(long ctx);
+    private native void nativeSetStillDepthPending(long ctx, boolean pending);
     private native boolean nativeBindDepthContext(long ctx);
     private native void nativeUnbindDepthContext(long ctx);
     private native int nativeWaitBeginFrame(long ctx);
@@ -244,6 +320,8 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                                           boolean pointerEnabled, boolean gazeEnabled,
                                           float[] out);
     private native void nativeSetScreenPose(long ctx, float[] pose);
+    private native void nativeSetImageNavigationDepthReady(long ctx, boolean leftReady,
+                                                            boolean rightReady);
     private native void nativeUploadBackground(long ctx, ByteBuffer pixels, int width, int height);
     private native void nativeUploadRoomModel(long ctx, ByteBuffer mesh, int length);
     private native void nativeUploadRoomTexture(long ctx, ByteBuffer pixels, int width, int height);
@@ -294,7 +372,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                         prefs.vrDepthDebug, prefs.vrConvergence, prefs.vrDepthScale,
                         prefs.vrHandTracking, prefs.vrSharpening, prefs.enablePerfOverlay,
                         prefs.vrAmbilight, prefs.vrAmbilightLevel, prefs.vrRoomLight,
-                        prefs.vrEnvResTier);
+                        prefs.vrEnvResTier, imageNavigationEnabled);
                 if (nativeCtx == 0) {
                     initLatch.countDown();
                     return;
@@ -393,7 +471,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                         return;
                     }
 
-                    source = new MidasDepthSource();
+                    source = new MidasDepthSource(fastStillImageDepth);
                     if (!source.initialize(activity, input, output)) {
                         // The depth texture keeps the flat map it was
                         // initialized with, so zero disparity, and the
@@ -422,8 +500,11 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         long inferenceNs = 0, uploadNs = 0, captureNs = 0, worstNs = 0;
 
         while (true) {
+            StillDepthFrame prepared;
+            boolean captured;
+            int capturedGeneration;
             synchronized (depthLock) {
-                while (!depthPending && !depthExit) {
+                while (!depthPending && pendingStillDepth.get() == null && !depthExit) {
                     try {
                         depthLock.wait();
                     } catch (InterruptedException e) {
@@ -434,8 +515,38 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 if (depthExit) {
                     return;
                 }
+                prepared = pendingStillDepth.getAndSet(null);
+                captured = depthPending;
+                capturedGeneration = captureStillGeneration;
                 depthPending = false;
                 depthBusy = true;
+            }
+            if (prepared != null) {
+                if (prepared.generation == stillImageGeneration.get()) {
+                    long upload = nativeUploadStillDepth(nativeCtx, prepared.rgb, prepared.depth);
+                    // Navigation can race an upload already executing on this
+                    // thread. Only expose it if its colour generation is still
+                    // current after the GL upload finishes.
+                    if (prepared.generation == stillImageGeneration.get()
+                            && prepared.generation == latchedStillColorGeneration) {
+                        publishedStillGeneration = prepared.generation;
+                        preparedStillDepthActive = true;
+                        nativeSetStillDepthPending(nativeCtx, false);
+                        forceVideoRedraw.set(true);
+                        publishedFrameIndex = videoFrameIndex;
+                        publishedFrameNs = System.nanoTime();
+                        LimeLog.info("Prepared static depth published in "
+                                + upload / 1000000 + " ms");
+                    } else {
+                        nativeSetStillDepthPending(nativeCtx, true);
+                    }
+                }
+                synchronized (depthLock) { depthBusy = false; }
+                continue;
+            }
+            if (!captured) {
+                synchronized (depthLock) { depthBusy = false; }
+                continue;
             }
 
             long start = System.nanoTime();
@@ -445,10 +556,22 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
             // has no frame to miss.
             long finish = nativeFinishDepthCapture(nativeCtx);
             boolean ok = finish >= 0 && source.estimate();
+            if (ok && fastStillImageDepth
+                    && capturedGeneration != stillImageGeneration.get()) {
+                ok = false;
+            }
             if (ok) {
+                boolean firstDepth = publishedFrameNs == 0;
+                if (fastStillImageDepth && capturedGeneration != publishedStillGeneration) {
+                    nativeResetStillDepthHistory(nativeCtx);
+                    publishedStillGeneration = capturedGeneration;
+                }
                 upload = nativeUploadDepth(nativeCtx);
                 publishedFrameIndex = captureFrameIndex;
                 publishedFrameNs = captureFrameNs;
+                if (firstDepth) {
+                    LimeLog.info("XR first depth published at " + System.nanoTime());
+                }
             }
 
             synchronized (depthLock) {
@@ -550,13 +673,16 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                     pointer, gaze, inputState);
             dispatchInput();
 
-            boolean newFrame = pendingFrames.getAndSet(0) > 0;
-            if (newFrame) {
+            boolean surfaceFrame = pendingFrames.getAndSet(0) > 0;
+            if (surfaceFrame) {
                 surfaceTexture.updateTexImage();
                 surfaceTexture.getTransformMatrix(texMatrix);
+                int colorGeneration = pendingStillColorGeneration.getAndSet(-1);
+                if (colorGeneration >= 0) latchedStillColorGeneration = colorGeneration;
 
                 if (depthReady) {
-                    if ((videoFrameIndex % cadence) == 0) {
+                    if ((videoFrameIndex % cadence) == 0
+                            && (!fastStillImageDepth || !preparedStillDepthActive)) {
                         startDepthCapture();
                     }
                     if (publishedFrameNs != 0) {
@@ -583,6 +709,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 }
                 videoFrameIndex++;
             }
+            boolean newFrame = surfaceFrame || forceVideoRedraw.getAndSet(false);
             // Upload here rather than from the reporting thread, since this is
             // the thread that owns the GL context
             ByteBuffer overlay = pendingOverlay.getAndSet(null);
@@ -988,6 +1115,9 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 inputState[IN_EXIT] = 0.0f;
                 inputListener.onVrExit();
             }
+            if (inputState[IN_IMAGE_NAV] != 0.0f) {
+                inputListener.onVrImageNavigate((int)inputState[IN_IMAGE_NAV]);
+            }
         }
 
         // A 3d room forces the picture onto its wall, so what comes back while
@@ -1172,6 +1302,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         lastCaptureNs = nativeCaptureDepthInput(nativeCtx, texMatrix);
         captureFrameIndex = videoFrameIndex;
         captureFrameNs = System.nanoTime();
+        captureStillGeneration = stillImageGeneration.get();
 
         synchronized (depthLock) {
             depthPending = true;

@@ -263,6 +263,30 @@
                 android:value="vr" />
         </activity>
 
+        <activity
+            android:name=".smb.SmbBrowserActivity"
+            android:resizeableActivity="true"
+            android:enableOnBackInvokedCallback="false"
+            android:exported="false">
+            <meta-data android:name="pvr.app.type" android:value="2d" />
+        </activity>
+
+        <activity
+            android:name=".StaticImageXrActivity"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection"
+            android:noHistory="true"
+            android:resizeableActivity="false"
+            android:enableOnBackInvokedCallback="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/StreamTheme"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="com.oculus.intent.category.VR" />
+            </intent-filter>
+            <meta-data android:name="pvr.app.type" android:value="vr" />
+        </activity>
+
         <service
             android:name=".discovery.DiscoveryService"
             android:label="mDNS PC Auto-Discovery Service" />

@@ -109,6 +109,12 @@ static void suggestBindings(XrCtx* ctx, const char* profile, int full) {
         b[n].action = ctx->triggerAction;
         b[n++].binding = toPath(ctx, path);
 
+        if (full && !simple && ctx->hapticAction != XR_NULL_HANDLE) {
+            snprintf(path, sizeof(path), "%s/output/haptic", hands[h]);
+            b[n].action = ctx->hapticAction;
+            b[n++].binding = toPath(ctx, path);
+        }
+
         if (!full || simple) {
             continue;
         }
@@ -240,6 +246,7 @@ int initXrInput(XrCtx* ctx) {
     ctx->scrollAction = makeAction(ctx, XR_ACTION_TYPE_VECTOR2F_INPUT, "scroll", "Scroll");
     ctx->grabAction = makeAction(ctx, XR_ACTION_TYPE_FLOAT_INPUT, "grab", "Move the screen");
     ctx->toggleAction = makeAction(ctx, XR_ACTION_TYPE_BOOLEAN_INPUT, "pointertoggle", "Pointer on or off");
+    ctx->hapticAction = makeAction(ctx, XR_ACTION_TYPE_VIBRATION_OUTPUT, "imagehaptic", "Image navigation haptic");
 
     if (ctx->aimAction == XR_NULL_HANDLE || ctx->triggerAction == XR_NULL_HANDLE) {
         return 0;
@@ -719,6 +726,12 @@ static Vec3 furniturePoint(XrCtx* ctx, int hover, float u, float v, XrPosef scre
     if (hover == HOVER_EXITPROMPT) {
         return screenPoint(u, v, ctx->exitPose, ctx->exitW, ctx->exitH, 0.0f, 0);
     }
+    if (hover == HOVER_IMAGE_NAV) {
+        float navW, navH;
+        XrPosef navPose;
+        imageNavPose(ctx, screenPose, &navW, &navH, &navPose);
+        return screenPoint(u, v, navPose, navW, navH, 0.0f, 0);
+    }
     return screenPoint(u, v, screenPose, ctx->screenWidth, height, radius, curved);
 }
 
@@ -889,7 +902,21 @@ static void readSources(XrCtx* ctx, InputFrame* f) {
             f->hitU[h] = kbU;
             f->hitV[h] = kbV;
         }
-        else if (screenProject(f->aimPoses[h], f->screenPose, ctx->screenWidth, f->height,
+        else if (ctx->imageNavEnabled && !ctx->pickerOpen && !ctx->cogOpen
+                && !ctx->kbOpen && !ctx->exitConfirmOpen) {
+            float navW, navH, navU, navV;
+            XrPosef navPose;
+            imageNavPose(ctx, f->screenPose, &navW, &navH, &navPose);
+            if (screenProject(f->aimPoses[h], navPose, navW, navH, 0.0f, 0,
+                              &navU, &navV)
+                    && navU >= 0.0f && navU <= 1.0f && navV >= 0.0f && navV <= 1.0f) {
+                f->hovers[h] = HOVER_IMAGE_NAV;
+                f->hitU[h] = navU;
+                f->hitV[h] = navV;
+            }
+        }
+        if (f->hovers[h] == HOVER_NONE
+                && screenProject(f->aimPoses[h], f->screenPose, ctx->screenWidth, f->height,
                                f->radius, f->curved, &f->hitU[h], &f->hitV[h])) {
             // No corner brackets in a room, so nothing there claims the ray
             f->hovers[h] = hoverTest(f->hitU[h], f->hitV[h], ctx->screenWidth, f->height,
@@ -1413,7 +1440,30 @@ static void updateExitPrompt(XrCtx* ctx, InputFrame* f) {
 
 // Lights whichever piece of furniture the ray is on, and acts on a press there
 static void updateFurniture(XrCtx* ctx, InputFrame* f) {
-    if (f->hover == HOVER_ENVBUTTON) {
+    ctx->imageNavHover = 0;
+    ctx->imageNavPressed = 0;
+    if (f->hover == HOVER_IMAGE_NAV) {
+        int side = f->hitU[f->hand] < 0.5f ? 1 : 2;
+        ctx->imageNavHover = side;
+        if (ctx->triggerDown[f->hand]) ctx->imageNavPressed = side;
+        if (ctx->triggerEdge[f->hand]) {
+            f->out[IN_IMAGE_NAV] = side == 1 ? -1.0f : 1.0f;
+            if (f->hand < HAND_COUNT && !ctx->usingHands[f->hand]
+                    && ctx->hapticAction != XR_NULL_HANDLE) {
+                XrHapticActionInfo action = { XR_TYPE_HAPTIC_ACTION_INFO };
+                action.action = ctx->hapticAction;
+                action.subactionPath = ctx->handPaths[f->hand];
+                XrHapticVibration vibration = { XR_TYPE_HAPTIC_VIBRATION };
+                vibration.duration = 25000000;
+                vibration.frequency = XR_FREQUENCY_UNSPECIFIED;
+                vibration.amplitude = 0.6f;
+                xrApplyHapticFeedback(ctx->session, &action,
+                                      (const XrHapticBaseHeader*)&vibration);
+            }
+            swallowTrigger(ctx, f->hand);
+        }
+    }
+    else if (f->hover == HOVER_ENVBUTTON) {
         ctx->envButtonHot = 1;
         if (ctx->triggerEdge[f->hand]) {
             ctx->pickerOpen = 1;
@@ -1883,7 +1933,8 @@ Java_com_limelight_binding_video_XrRenderer_nativeUpdateInput(JNIEnv* env, jobje
             || f.hover == HOVER_LOCK || f.hover == HOVER_HALO || f.hover == HOVER_COGBUTTON
             || f.hover == HOVER_COGPANEL || f.hover == HOVER_KBBUTTON
             || f.hover == HOVER_KBPANEL || f.hover == HOVER_EXITBUTTON
-            || f.hover == HOVER_EXITPROMPT) && f.headValid && f.hand >= 0) {
+            || f.hover == HOVER_EXITPROMPT || f.hover == HOVER_IMAGE_NAV)
+            && f.headValid && f.hand >= 0) {
         beamToFurniture(ctx, &f);
     }
     sendPointer(ctx, &f, hit);

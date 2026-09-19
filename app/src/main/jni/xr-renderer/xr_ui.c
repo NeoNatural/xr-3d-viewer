@@ -3,6 +3,20 @@
 // on the settings panel.
 #include "xr_renderer.h"
 
+void imageNavPose(XrCtx* ctx, XrPosef screenPose, float* width, float* height,
+                  XrPosef* pose) {
+    *width = ctx->screenWidth * 0.31f;
+    *height = *width * IMAGE_NAV_TEX_H / IMAGE_NAV_TEX_W;
+    float screenHeight = ctx->screenWidth * (float)ctx->videoHeight / ctx->videoWidth;
+    Vec3 offset = { 0.0f, screenHeight * 0.5f + *height * 0.5f
+                           + ctx->screenWidth * 0.018f, 0.012f };
+    Vec3 world = quatRotate(screenPose.orientation, offset);
+    *pose = screenPose;
+    pose->position.x += world.x;
+    pose->position.y += world.y;
+    pose->position.z += world.z;
+}
+
 // Which affordance the ray is over. Corners are numbered 0 top left, 1 top
 // right, 2 bottom left, 3 bottom right, and are skipped where they are not
 // drawn so the ray falls through to what is behind them.

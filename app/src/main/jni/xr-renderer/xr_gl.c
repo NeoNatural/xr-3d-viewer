@@ -384,7 +384,7 @@ void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation) {
     // is taken for either of them. It happens here rather than with the room's
     // draw, which now follows the video, so the room is lit from this frame's
     // colour rather than the last one's.
-    int sampled = glowOn || roomOn;
+    int sampled = glowOn || (roomOn && ctx->roomLightOn);
     if (sampled) {
         runFrameColorSample(ctx, texMatrix);
     }

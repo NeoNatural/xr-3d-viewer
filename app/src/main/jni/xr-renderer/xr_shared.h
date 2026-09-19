@@ -67,7 +67,8 @@
 // Set to 1 the frame the exit prompt is confirmed. Nothing else is meaningful
 // here, so a zeroed slot says nothing happened.
 #define IN_EXIT     21
-#define IN_SLOTS    22
+#define IN_IMAGE_NAV 22
+#define IN_SLOTS    23
 
 // Settings the panel can hand back to Java to be applied and stored
 #define SETTING_SHARPEN 0
@@ -164,14 +165,12 @@
 #define COG_ROW3D_SEPARATION 0
 #define COG_ROW3D_CONVERGENCE 1
 #define COG_ROW3D_COUNT 2
-// Right hand end of the separation track, as a fraction of frame width. Three
-// times the 0.5 percent that phase 6 measured as the useful maximum: past
-// there depth stops growing and only the strain does, so the far end of the
-// track is drawn marked rather than left off.
-#define COG_SEP_MAX 0.015f
+// Allow stronger disparity for images with weak model depth, while preserving
+// the existing 0.5 percent default and keeping the full range user controlled.
+#define COG_SEP_MAX 0.030f
 // Steps along that track, so a dragged value lands exactly on one of the
 // tenths of a percent the preference is stored in
-#define COG_SEP_STEPS 15
+#define COG_SEP_STEPS 30
 
 // Display tab rows. Cells rather than a track, so a press picks one instead of
 // dragging a value.

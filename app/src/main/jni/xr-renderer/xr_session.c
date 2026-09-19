@@ -527,6 +527,9 @@ static void destroyCtx(JNIEnv* env, XrCtx* ctx) {
     destroyArtSwapchain(&ctx->swapchain, &ctx->swapchainImages);
     destroyArtSwapchain(&ctx->overlaySwapchain, &ctx->overlayImages);
     destroyArtSwapchain(&ctx->pointerSwapchain, &ctx->pointerImages);
+    for (int state = 0; state < IMAGE_NAV_STATES; state++) {
+        destroyArtSwapchain(&ctx->imageNavSwapchains[state], &ctx->imageNavImages[state]);
+    }
     destroyArtSwapchain(&ctx->barSwapchain, &ctx->barImages);
     destroyArtSwapchain(&ctx->cornerSwapchain, &ctx->cornerImages);
     destroyArtSwapchain(&ctx->backgroundSwapchain, &ctx->backgroundImages);
@@ -593,9 +596,12 @@ Java_com_limelight_binding_video_XrRenderer_nativeInit(JNIEnv* env, jobject thiz
                                                        jboolean handTracking, jint sharpenMode,
                                                        jboolean perfOverlay, jboolean ambilight,
                                                        jint ambiLevel, jboolean roomLight,
-                                                       jint envResTier) {
+                                                       jint envResTier, jboolean imageNavigation) {
     XrCtx* ctx = calloc(1, sizeof(XrCtx));
+    atomic_init(&ctx->stillDepthPending, 0);
     ctx->handsEnabled = handTracking;
+    ctx->imageNavEnabled = imageNavigation;
+    ctx->imageNavDepthReadyMask = 3;
     // EnvResTier: 0 low, 1 standard, 2 high, 3 ultra
     ctx->envResTier = envResTier;
     ctx->videoWidth = width;
@@ -698,6 +704,14 @@ Java_com_limelight_binding_video_XrRenderer_nativeInit(JNIEnv* env, jobject thiz
          ctx->cylinderSupported, ctx->equirectSupported, ctx->srgbWriteControl,
          ctx->maxLayerCount);
     return (jlong)(intptr_t)ctx;
+}
+
+JNIEXPORT void JNICALL
+Java_com_limelight_binding_video_XrRenderer_nativeSetImageNavigationDepthReady(
+        JNIEnv* env, jobject thiz, jlong handle, jboolean leftReady, jboolean rightReady) {
+    XrCtx* ctx = (XrCtx*)(intptr_t)handle;
+    if (ctx == NULL) return;
+    ctx->imageNavDepthReadyMask = (leftReady ? 1 : 0) | (rightReady ? 2 : 0);
 }
 
 JNIEXPORT void JNICALL

@@ -371,4 +371,6 @@
     <string name="analogscroll_none">None (both sticks move the mouse)</string>
     <string name="analogscroll_right">Right analog stick</string>
     <string name="analogscroll_left">Left analog stick</string>
+    <string name="test_static_image">Test 3D Image</string>
+    <string name="browse_smb">Browse SMB</string>
 </resources>

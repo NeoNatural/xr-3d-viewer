@@ -373,6 +373,46 @@ Java_com_limelight_binding_video_XrRenderer_nativeUploadDepth(JNIEnv* env, jobje
     return nowNs() - startNs;
 }
 
+// A still-image cut must seed both temporal filters from its own depth map.
+// The video path retains smoothing; only explicit still cuts call this.
+JNIEXPORT void JNICALL
+Java_com_limelight_binding_video_XrRenderer_nativeResetStillDepthHistory(
+        JNIEnv* env, jobject thiz, jlong handle) {
+    XrCtx* ctx = (XrCtx*)(intptr_t)handle;
+    if (ctx == NULL) return;
+    ctx->rangeValid = 0;
+    ctx->depthEmaValid = 0;
+}
+
+JNIEXPORT void JNICALL
+Java_com_limelight_binding_video_XrRenderer_nativeSetStillDepthPending(
+        JNIEnv* env, jobject thiz, jlong handle, jboolean pending) {
+    XrCtx* ctx = (XrCtx*)(intptr_t)handle;
+    if (ctx == NULL) return;
+    atomic_store_explicit(&ctx->stillDepthPending, pending ? 1 : 0, memory_order_release);
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_limelight_binding_video_XrRenderer_nativeUploadStillDepth(
+        JNIEnv* env, jobject thiz, jlong handle, jobject rgbBuffer, jobject depthBuffer) {
+    XrCtx* ctx = (XrCtx*)(intptr_t)handle;
+    const int n = DEPTH_TEX_SIZE;
+    if (ctx == NULL || rgbBuffer == NULL || depthBuffer == NULL) return 0;
+    void* rgb = (*env)->GetDirectBufferAddress(env, rgbBuffer);
+    void* depth = (*env)->GetDirectBufferAddress(env, depthBuffer);
+    if (rgb == NULL || depth == NULL
+            || (*env)->GetDirectBufferCapacity(env, rgbBuffer) < (jlong)n * n * 3 * sizeof(float)
+            || (*env)->GetDirectBufferCapacity(env, depthBuffer) < (jlong)n * n * sizeof(float)) {
+        LOGW("invalid prepared still depth buffers");
+        return 0;
+    }
+    memcpy(ctx->modelInput, rgb, (size_t)n * n * 3 * sizeof(float));
+    memcpy(ctx->modelOutput, depth, (size_t)n * n * sizeof(float));
+    ctx->rangeValid = 0;
+    ctx->depthEmaValid = 0;
+    return Java_com_limelight_binding_video_XrRenderer_nativeUploadDepth(env, thiz, handle);
+}
+
 // Waits, once, for the fence guarding the slot the frame loop is about to
 // sample, then discards it. Once the wait is in this context's queue every
 // later command is ordered behind the depth thread's upload by the queue

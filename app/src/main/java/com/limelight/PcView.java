@@ -34,6 +34,7 @@ import android.app.ActivityManager;
 import android.app.Service;
 import android.content.ComponentName;
 import android.content.Intent;
+import com.limelight.smb.SmbBrowserActivity;
 import android.content.ServiceConnection;
 import android.content.res.Configuration;
 import android.opengl.GLSurfaceView;
@@ -155,6 +156,10 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
         ImageButton settingsButton = findViewById(R.id.settingsButton);
         ImageButton addComputerButton = findViewById(R.id.manuallyAddPc);
         ImageButton helpButton = findViewById(R.id.helpButton);
+        findViewById(R.id.testStaticImage).setOnClickListener(v ->
+                startActivity(new Intent(PcView.this, StaticImageXrActivity.class)));
+        findViewById(R.id.browseSmb).setOnClickListener(v ->
+                startActivity(new Intent(PcView.this, SmbBrowserActivity.class)));
 
         settingsButton.setOnClickListener(new OnClickListener() {
             @Override

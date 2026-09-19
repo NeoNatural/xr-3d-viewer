@@ -215,6 +215,10 @@ static inline long nowNs(void) {
 #define HOVER_KBPANEL   11
 #define HOVER_EXITBUTTON 12
 #define HOVER_EXITPROMPT 13
+#define HOVER_IMAGE_NAV 14
+#define IMAGE_NAV_TEX_W 512
+#define IMAGE_NAV_TEX_H 112
+#define IMAGE_NAV_STATES 8
 // How far past each edge that reaches, as a fraction of the screen
 #define HALO_FRAC 0.5f
 // How far the ray runs when it is aimed at nothing at all, in metres
@@ -433,6 +437,7 @@ typedef struct {
     // slot the frame loop reads is its own to write.
     GLuint depthTextures[DEPTH_TEX_COUNT];
     int depthReadIndex;
+    atomic_int stillDepthPending;
     // The slot the depth thread's next upload lands in. Its own to read and
     // write, so nothing guards it.
     int depthWriteIndex;
@@ -767,6 +772,7 @@ typedef struct {
     XrAction scrollAction;
     XrAction grabAction;
     XrAction toggleAction;
+    XrAction hapticAction;
     XrSpace aimSpaces[SRC_COUNT];
     XrPath handPaths[HAND_COUNT];
     int inputReady;
@@ -785,6 +791,15 @@ typedef struct {
     // without this the press that picks something goes on to click whatever the
     // modal was covering as soon as it closes.
     int triggerSwallowed[SRC_COUNT];
+    int imageNavEnabled;
+    int imageNavHover;
+    int imageNavPressed;
+    // Bit 0 left and bit 1 right. Missing depth turns that button red.
+    int imageNavDepthReadyMask;
+    XrSwapchain imageNavSwapchains[IMAGE_NAV_STATES];
+    XrSwapchainImageOpenGLESKHR* imageNavImages[IMAGE_NAV_STATES];
+    uint32_t imageNavImageCounts[IMAGE_NAV_STATES];
+    int imageNavReady;
     // Diagnostics for the click path, written but never acted on. The analog
     // value is kept as the action reported it, and the low water mark and the
     // dip count run for the length of one press, which is what says whether a
@@ -1132,6 +1147,8 @@ int createArtSwapchain(XrCtx* ctx, int width, int height, const char* what,
 void destroyArtSwapchain(XrSwapchain* chain, XrSwapchainImageOpenGLESKHR** images);
 int createPointerSwapchain(XrCtx* ctx);
 int uploadPointerArt(XrCtx* ctx);
+void imageNavPose(XrCtx* ctx, XrPosef screenPose, float* width, float* height,
+                  XrPosef* pose);
 
 // xr_debug.c: setprop knobs and frame capture
 void propFlag(const char* name, int* target);

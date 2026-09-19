@@ -6,3 +6,4 @@
 # optimization passes, so it builds quickly and its stack traces stay close to
 # the source. The release build has always optimized and is untouched.
 -dontoptimize
+-keep class ai.onnxruntime.** { *; }

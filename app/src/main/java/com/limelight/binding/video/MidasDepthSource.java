@@ -41,6 +41,14 @@ public class MidasDepthSource implements DepthSource {
     // has been made (183 to 265 ms CPU against 13.5 ms GPU).
     private static final boolean BENCHMARK_CPU = false;
 
+    private final boolean fastStillImageStart;
+
+    public MidasDepthSource() { this(false); }
+
+    public MidasDepthSource(boolean fastStillImageStart) {
+        this.fastStillImageStart = fastStillImageStart;
+    }
+
     private Interpreter interpreter;
     private GpuDelegate gpuDelegate;
     private ByteBuffer input;
@@ -67,21 +75,25 @@ public class MidasDepthSource implements DepthSource {
         // driver strings, not a capability check, and headsets are not on it.
         // Log what it thinks but ignore it: the only real test is creating
         // the delegate and seeing whether the model loads.
-        CompatibilityList compatibility = new CompatibilityList();
-        LimeLog.info("Depth model: GPU allowlist says "
-                +compatibility.isDelegateSupportedOnThisDevice()+", trying the delegate anyway");
-
-        try {
-            GpuDelegateFactory.Options gpuOptions = new GpuDelegateFactory.Options();
-            // fp16 math, which is what the model already carries
-            gpuOptions.setPrecisionLossAllowed(true);
-            gpuOptions.setInferencePreference(
-                    GpuDelegateFactory.Options.INFERENCE_PREFERENCE_SUSTAINED_SPEED);
-            gpuDelegate = new GpuDelegate(gpuOptions);
-            options.addDelegate(gpuDelegate);
-            gpuAccelerated = true;
-        } catch (Exception e) {
-            LimeLog.warning("GPU delegate creation failed, using CPU: "+e.getMessage());
+        if (fastStillImageStart) {
+            LimeLog.info("Static image depth uses CPU for fast startup");
+        } else {
+            CompatibilityList compatibility = new CompatibilityList();
+            LimeLog.info("Depth model: GPU allowlist says "
+                    + compatibility.isDelegateSupportedOnThisDevice()
+                    + ", trying the delegate anyway");
+            try {
+                GpuDelegateFactory.Options gpuOptions = new GpuDelegateFactory.Options();
+                // fp16 math, which is what the model already carries
+                gpuOptions.setPrecisionLossAllowed(true);
+                gpuOptions.setInferencePreference(
+                        GpuDelegateFactory.Options.INFERENCE_PREFERENCE_SUSTAINED_SPEED);
+                gpuDelegate = new GpuDelegate(gpuOptions);
+                options.addDelegate(gpuDelegate);
+                gpuAccelerated = true;
+            } catch (Exception e) {
+                LimeLog.warning("GPU delegate creation failed, using CPU: " + e.getMessage());
+            }
         }
         if (!gpuAccelerated) {
             options.setNumThreads(2);
@@ -115,15 +127,19 @@ public class MidasDepthSource implements DepthSource {
             return false;
         }
 
-        for (int i = 0; i < WARMUP_RUNS; i++) {
+        for (int i = 0; i < (fastStillImageStart ? 1 : WARMUP_RUNS); i++) {
             if (!estimate()) {
                 release();
                 return false;
             }
         }
-        LimeLog.info("Depth model warmup done, "+(gpuAccelerated ? "GPU" : "CPU")+" inference "
-                +String.format("%.1f", benchmark(interpreter, BENCHMARK_RUNS))
-                +" ms avg over "+BENCHMARK_RUNS+" runs");
+        if (fastStillImageStart) {
+            LimeLog.info("Static image depth model ready");
+        } else {
+            LimeLog.info("Depth model warmup done, "+(gpuAccelerated ? "GPU" : "CPU")+" inference "
+                    +String.format("%.1f", benchmark(interpreter, BENCHMARK_RUNS))
+                    +" ms avg over "+BENCHMARK_RUNS+" runs");
+        }
 
         if (gpuAccelerated && BENCHMARK_CPU) {
             benchmarkCpuForComparison(model);

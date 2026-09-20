@@ -809,7 +809,10 @@ Java_com_limelight_binding_video_XrRenderer_nativeEndFrame(JNIEnv* env, jobject 
         quadWidth = ctx->screenOverride;
     }
 
-    if (newFrame && ctx->shouldRender) {
+    // Video naturally redraws on each decoded frame. A still image has no new
+    // SurfaceTexture frame while its 3D controls move, so explicitly rerun the
+    // warp with the retained colour and depth textures for those adjustments.
+    if ((newFrame || ctx->stereoRedrawPending) && ctx->shouldRender) {
         long startNs = nowNs();
 
         float texMatrix[16];
@@ -821,6 +824,7 @@ Java_com_limelight_binding_video_XrRenderer_nativeEndFrame(JNIEnv* env, jobject 
         ctx->statTotalNs += elapsed;
         if (elapsed > ctx->statMaxNs) ctx->statMaxNs = elapsed;
         logWarpStats(ctx);
+        ctx->stereoRedrawPending = 0;
     }
 
     FrameView view;

@@ -416,11 +416,13 @@ void cogApplySlider(XrCtx* ctx, int tab, int slider, float pu) {
             int units = (int)roundf(t * COG_SEP_STEPS);
             ctx->panelSeparation = units * 0.001f;
             ctx->separationCurrent = ctx->panelSeparation;
+            ctx->stereoRedrawPending = 1;
         }
         else if (slider == COG_ROW3D_CONVERGENCE) {
             // Whole percent, same reason
             int units = (int)roundf(t * 100.0f);
             ctx->convergence = units / 100.0f;
+            ctx->stereoRedrawPending = 1;
         }
         return;
     }

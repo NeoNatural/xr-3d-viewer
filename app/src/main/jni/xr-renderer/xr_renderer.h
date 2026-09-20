@@ -511,6 +511,10 @@ typedef struct {
     int occlusionEnabled;
     float convergence;
     float separationOverride;
+    // Static images do not continuously submit source frames. A live panel
+    // adjustment sets this so the current colour/depth textures are warped
+    // again even though SurfaceTexture has nothing new to latch.
+    int stereoRedrawPending;
     float distanceOverride;
     float screenOverride;
 

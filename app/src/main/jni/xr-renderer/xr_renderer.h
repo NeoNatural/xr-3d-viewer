@@ -91,6 +91,12 @@ static inline long nowNs(void) {
 // deflection winds the wheel
 #define SCROLL_DEADZONE 0.30f
 #define SCROLL_CLICKS_PER_SEC 7.5f
+// While the move handle is held, its controller's stick adjusts the screen
+// instead of scrolling the host. Full vertical travel changes viewer distance
+// at this many metres per second; full horizontal travel changes width.
+#define GRAB_STICK_DEADZONE 0.20f
+#define GRAB_DISTANCE_M_PER_SEC 2.0f
+#define GRAB_WIDTH_M_PER_SEC 2.0f
 
 // One euro filter on the hit point. A hand at rest still shakes, and at 3 m
 // that tremor is several pixels of cursor, so the cutoff drops when the

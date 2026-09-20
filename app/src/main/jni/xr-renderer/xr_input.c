@@ -398,6 +398,17 @@ static XrVector2f actionVec2(XrCtx* ctx, XrAction action, int hand) {
     return state.currentState;
 }
 
+// Removes the centre slack and remaps the remaining stick travel to the full
+// 0..1 range. This keeps a resting controller from slowly walking the screen.
+static float grabStickAxis(float value) {
+    float magnitude = fabsf(value);
+    if (magnitude <= GRAB_STICK_DEADZONE) {
+        return 0.0f;
+    }
+    return copysignf((magnitude - GRAB_STICK_DEADZONE)
+                     / (1.0f - GRAB_STICK_DEADZONE), value);
+}
+
 // A pointer ray from the joints, for runtimes that track hands but never offer
 // a pointer pose. Cast from a shoulder rather than from the hand itself: a ray
 // along the finger swings wildly with small movements of the wrist, while one
@@ -689,6 +700,60 @@ static void applyGrab(XrCtx* ctx, XrPosef* aims, const int* valid, int hand,
     // it was placed on rather than walking off towards one corner
     ctx->screenPose.position = ctx->grabScreen.position;
     ctx->screenPose.orientation = ctx->grabScreen.orientation;
+}
+
+// Fine placement while the move handle is held: stick forward/back moves the
+// screen farther from/nearer to the viewer and right/left grows/shrinks it.
+// Rebase the rigid hand attachment after changing distance so applyGrab's next
+// frame starts from the adjusted pose instead of snapping back to the old one.
+static void applyGrabStick(XrCtx* ctx, const XrPosef* aims, float dt, int headValid) {
+    if (ctx->grabMode != GRAB_MOVE || ctx->grabHand < 0
+            || ctx->grabHand >= HAND_COUNT || dt <= 0.0f) {
+        return;
+    }
+
+    XrVector2f stick = actionVec2(ctx, ctx->scrollAction, ctx->grabHand);
+    float sizeAxis = grabStickAxis(stick.x);
+    float distanceAxis = grabStickAxis(stick.y);
+    if (sizeAxis == 0.0f && distanceAxis == 0.0f) {
+        return;
+    }
+
+    if (sizeAxis != 0.0f) {
+        float oldWidth = ctx->screenWidth;
+        float width = oldWidth + sizeAxis * GRAB_WIDTH_M_PER_SEC * dt;
+        if (width < SCREEN_MIN_WIDTH) width = SCREEN_MIN_WIDTH;
+        if (width > SCREEN_MAX_WIDTH) width = SCREEN_MAX_WIDTH;
+        if (oldWidth > 0.01f) {
+            ctx->screenRadius *= width / oldWidth;
+        }
+        ctx->screenWidth = width;
+    }
+
+    if (distanceAxis != 0.0f && headValid) {
+        Vec3 offset = {
+            ctx->screenPose.position.x - ctx->headPos.x,
+            ctx->screenPose.position.y - ctx->headPos.y,
+            ctx->screenPose.position.z - ctx->headPos.z
+        };
+        float distance = sqrtf(offset.x * offset.x + offset.y * offset.y
+                               + offset.z * offset.z);
+        if (distance > 0.01f) {
+            float wanted = distance + distanceAxis * GRAB_DISTANCE_M_PER_SEC * dt;
+            if (wanted < COG_DIST_MIN) wanted = COG_DIST_MIN;
+            if (wanted > COG_DIST_MAX) wanted = COG_DIST_MAX;
+            float scale = wanted / distance;
+            ctx->screenPose.position.x = ctx->headPos.x + offset.x * scale;
+            ctx->screenPose.position.y = ctx->headPos.y + offset.y * scale;
+            ctx->screenPose.position.z = ctx->headPos.z + offset.z * scale;
+            ctx->screenRadius *= scale;
+        }
+    }
+
+    ctx->grabAim = aims[ctx->grabHand];
+    ctx->grabScreen = ctx->screenPose;
+    ctx->grabWidth = ctx->screenWidth;
+    ctx->grabRadius = ctx->screenRadius;
 }
 
 // The press was meant for the thing that is open, not for the host behind it.
@@ -1884,6 +1949,7 @@ Java_com_limelight_binding_video_XrRenderer_nativeUpdateInput(JNIEnv* env, jobje
                                      || f.hitV[f.hand] < 0.0f || f.hitV[f.hand] > 1.0f);
     applyGrab(ctx, f.aimPoses, f.aimValid, f.hand, f.hover, ctx->hoverCorner, offPicture,
               f.height, f.curved);
+    applyGrabStick(ctx, f.aimPoses, f.dt, f.headValid);
     f.screenPose = ctx->screenPose;
     f.height = ctx->screenWidth * (float)ctx->videoHeight / (float)ctx->videoWidth;
     f.radius = ctx->screenRadius;

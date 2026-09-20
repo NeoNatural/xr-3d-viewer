@@ -86,6 +86,10 @@ The next headset trace showed remaining multi-second stalls in RGB preparation r
 
 The transient byte-array version improved sustained navigation but could still produce one early large allocation/GC event. Uncached SMB input is now streamed once to an app-cache temporary file; bounds and pixel decode reopen that local file, and it is deleted immediately after the display bitmap is made. This keeps the one-network-read behavior without retaining compressed originals on the Java heap. Static images also no longer post the same bitmap to the input Surface every 200 ms. The OES texture retains its last frame, so the activity posts only the initial image and each actual navigation update. This prevents old frames queued by the 5 Hz loop from briefly reappearing after a switch and reduces the idle poll interval to 25 ms for input responsiveness.
 
+## Grab thumbstick adjustment
+
+While a controller holds the screen's move handle, that controller's thumbstick now adjusts the screen placement. Vertical travel changes viewer-to-screen distance (forward is farther, back is nearer), and horizontal travel changes screen width (right grows, left shrinks). The input has a 20% deadzone, runs at 2 metres per second at full travel, and uses the existing 0.2–8 metre distance and 0.8–8 metre width limits. Each distance adjustment rebases the rigid hand attachment so the next grab frame continues from the adjusted pose rather than snapping back. Outside a move grab, the thumbstick retains its previous host-scroll behavior. The screen pose is still persisted once when the grab ends.
+
 - Android SDK 37 and NDK 29 installed. The unmodified `assembleNonRootDebug` variant builds successfully through `tools/build-local.sh`; Java and native unit tests pass.
 - Quest 3 is visible to ADB. The debug APK installed successfully as `com.gilleece.moonlightxr.debug`, and `com.limelight.PcView` started with a live process.
 - Still verify a Moonlight stream in 2D and model based stereo on the headset. Record XR FPS, depth inference time, warp GPU time, and memory during that session.

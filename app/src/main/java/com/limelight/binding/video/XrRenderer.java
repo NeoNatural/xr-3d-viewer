@@ -128,9 +128,15 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private final float[] inputState = new float[IN_SLOTS];
     private int heldButtons;
     private InputListener inputListener;
+    private boolean imagePlaybackEnabled;
     private boolean imageNavigationEnabled;
+    private boolean videoControlsEnabled;
+    private final AtomicReference<VideoControlState> pendingVideoControlState =
+            new AtomicReference<>();
+    private final AtomicReference<Float> pendingVideoAspect = new AtomicReference<>();
     private Context prefsContext;
     private PreferenceConfiguration prefConfig;
+    private volatile float currentDisplayAspect = 9.0f / 16.0f;
 
     // The 360 photo shown behind the screen. Decoded off the frame loop and
     // picked up whenever it is ready, so a slow decode cannot delay the first
@@ -214,6 +220,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         // The exit prompt was confirmed, so the session is to end
         void onVrExit();
         default void onVrImageNavigate(int direction) { }
+        default void onVrVideoControl(int action, float value) { }
     }
 
     public void setInputListener(InputListener listener) {
@@ -221,7 +228,36 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     }
 
     public void setImageNavigationEnabled(boolean enabled) {
+        imagePlaybackEnabled = true;
         imageNavigationEnabled = enabled;
+    }
+
+    public void setVideoControlsEnabled(boolean enabled) {
+        videoControlsEnabled = enabled;
+    }
+
+    /** Updates the visible play state and timeline without touching native state off-thread. */
+    public void setVideoPlaybackState(boolean playing, float progress) {
+        pendingVideoControlState.set(new VideoControlState(playing,
+                Math.max(0.0f, Math.min(1.0f, progress))));
+    }
+
+    /** Changes the physical screen aspect when a playlist item has different geometry. */
+    public void setVideoDisplayAspect(float heightOverWidth) {
+        if (heightOverWidth > 0.0f && Float.isFinite(heightOverWidth)) {
+            currentDisplayAspect = heightOverWidth;
+            pendingVideoAspect.set(heightOverWidth);
+        }
+    }
+
+    private static final class VideoControlState {
+        final boolean playing;
+        final float progress;
+
+        VideoControlState(boolean playing, float progress) {
+            this.playing = playing;
+            this.progress = progress;
+        }
     }
 
     /** Red navigation buttons indicate that the adjacent prepared depth is pending. */
@@ -297,7 +333,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                                    boolean depthDebug, int convergence, int depthScale,
                                    boolean handTracking, int sharpenMode, boolean perfOverlay,
                                    boolean ambilight, int ambiLevel, boolean roomLight,
-                                   int envResTier, boolean imageNavigation);
+                                   int envResTier, int mediaControlsMode);
     private native void nativeSetCaptureDir(long ctx, String dir);
     private native int nativeGetTexId(long ctx);
     private native ByteBuffer nativeGetModelInput(long ctx);
@@ -322,6 +358,8 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private native void nativeSetScreenPose(long ctx, float[] pose);
     private native void nativeSetImageNavigationDepthReady(long ctx, boolean leftReady,
                                                             boolean rightReady);
+    private native void nativeSetVideoControlState(long ctx, boolean playing, float progress);
+    private native void nativeSetVideoDisplayAspect(long ctx, float heightOverWidth);
     private native void nativeUploadBackground(long ctx, ByteBuffer pixels, int width, int height);
     private native void nativeUploadRoomModel(long ctx, ByteBuffer mesh, int length);
     private native void nativeUploadRoomTexture(long ctx, ByteBuffer pixels, int width, int height);
@@ -343,6 +381,9 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
 
     public boolean start(final Activity activity, final int videoWidth, final int videoHeight,
                          final PreferenceConfiguration prefs) {
+        prefsContext = activity.getApplicationContext();
+        currentDisplayAspect = videoWidth > 0 ? (float) videoHeight / videoWidth : 9.0f / 16.0f;
+        applyMediaPreferences(prefs);
         final CountDownLatch initLatch = new CountDownLatch(1);
         final boolean[] initOk = new boolean[1];
 
@@ -372,13 +413,14 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                         prefs.vrDepthDebug, prefs.vrConvergence, prefs.vrDepthScale,
                         prefs.vrHandTracking, prefs.vrSharpening, prefs.enablePerfOverlay,
                         prefs.vrAmbilight, prefs.vrAmbilightLevel, prefs.vrRoomLight,
-                        prefs.vrEnvResTier, imageNavigationEnabled);
+                        prefs.vrEnvResTier, imageNavigationEnabled ? MEDIA_CONTROLS_IMAGES
+                                : videoControlsEnabled ? MEDIA_CONTROLS_VIDEO
+                                : MEDIA_CONTROLS_NONE);
                 if (nativeCtx == 0) {
                     initLatch.countDown();
                     return;
                 }
 
-                prefsContext = activity.getApplicationContext();
                 // Held on to rather than only read here: the stats toggle on
                 // the panel writes back to this same instance, which is the one
                 // the decoder's stats path checks
@@ -642,7 +684,14 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
 
     private void runFrameLoop(PreferenceConfiguration prefs) {
         float distance = prefs.vrDistance / 10.0f;
+        // For videos the size control denotes the screen diagonal. That gives
+        // portrait and landscape clips the same apparent scale; images retain
+        // their established fixed canvas behaviour.
         float quadWidth = prefs.vrScreenSize / 10.0f;
+        if (videoControlsEnabled) {
+            quadWidth /= (float)Math.sqrt(1.0f
+                    + currentDisplayAspect * currentDisplayAspect);
+        }
         float curvature = prefs.vrCurvature / 100.0f;
         // Stored as tenths of a percent of frame width
         float separation = prefs.vrStereoSeparation / 1000.0f;
@@ -776,6 +825,13 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 nativeSetEnvironment(nativeCtx, environmentChoice, backgroundVisible());
             }
 
+            VideoControlState videoState = pendingVideoControlState.getAndSet(null);
+            if (videoState != null) {
+                nativeSetVideoControlState(nativeCtx, videoState.playing, videoState.progress);
+            }
+            Float videoAspect = pendingVideoAspect.getAndSet(null);
+            if (videoAspect != null) nativeSetVideoDisplayAspect(nativeCtx, videoAspect);
+
             nativeEndFrame(nativeCtx, newFrame, texMatrix, distance, quadWidth, curvature,
                     headLocked, separation, eyeSwap, passthroughOn);
         }
@@ -800,17 +856,20 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         panels = new XrPanels(prefsContext, environmentFiles);
 
         SharedPreferences saved = PreferenceManager.getDefaultSharedPreferences(prefsContext);
-        int id = saved.getInt(PreferenceConfiguration.VR_ENVIRONMENT_ID_PREF_STRING, -1);
+        int id = saved.getInt(preferenceKey(
+                PreferenceConfiguration.VR_ENVIRONMENT_ID_PREF_STRING), -1);
         if (id < 0) {
             // An install from before the ids has a cell instead, which only
             // means anything read against the layout it was written under. The
             // old key is left where it is, since nothing costs less than a
             // stale int and an older build can still start on it.
-            int legacy = saved.getInt(PreferenceConfiguration.VR_ENVIRONMENT_PREF_STRING, -1);
+            int legacy = saved.getInt(preferenceKey(
+                    PreferenceConfiguration.VR_ENVIRONMENT_PREF_STRING), -1);
             if (legacy >= 0 && legacy < LEGACY_CELL_IDS.length) {
                 id = LEGACY_CELL_IDS[legacy];
                 saved.edit()
-                        .putInt(PreferenceConfiguration.VR_ENVIRONMENT_ID_PREF_STRING, id)
+                        .putInt(preferenceKey(
+                                PreferenceConfiguration.VR_ENVIRONMENT_ID_PREF_STRING), id)
                         .apply();
             }
         }
@@ -960,8 +1019,10 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         // The grid is a second way to reach the passthrough switch, so the
         // setting follows it rather than disagreeing with what is on screen
         PreferenceManager.getDefaultSharedPreferences(prefsContext).edit()
-                .putInt(PreferenceConfiguration.VR_ENVIRONMENT_ID_PREF_STRING, idForCell(cell))
-                .putBoolean(PreferenceConfiguration.VR_PASSTHROUGH_PREF_STRING, passthroughOn)
+                .putInt(preferenceKey(PreferenceConfiguration.VR_ENVIRONMENT_ID_PREF_STRING),
+                        idForCell(cell))
+                .putBoolean(preferenceKey(PreferenceConfiguration.VR_PASSTHROUGH_PREF_STRING),
+                        passthroughOn)
                 .apply();
     }
 
@@ -1118,6 +1179,10 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
             if (inputState[IN_IMAGE_NAV] != 0.0f) {
                 inputListener.onVrImageNavigate((int)inputState[IN_IMAGE_NAV]);
             }
+            if (inputState[IN_VIDEO_CONTROL] != 0.0f) {
+                inputListener.onVrVideoControl((int)inputState[IN_VIDEO_CONTROL],
+                        inputState[IN_VIDEO_VALUE]);
+            }
         }
 
         // A 3d room forces the picture onto its wall, so what comes back while
@@ -1151,7 +1216,8 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         if (setting == SETTING_SHARPEN) {
             String choice = value == 2 ? "quality" : (value == 1 ? "normal" : "off");
             PreferenceManager.getDefaultSharedPreferences(prefsContext).edit()
-                    .putString(PreferenceConfiguration.VR_SHARPENING_PREF_STRING, choice)
+                    .putString(preferenceKey(PreferenceConfiguration.VR_SHARPENING_PREF_STRING),
+                            choice)
                     .apply();
         }
         else if (setting == SETTING_STATS) {
@@ -1163,7 +1229,8 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 prefConfig.enablePerfOverlay = on;
             }
             PreferenceManager.getDefaultSharedPreferences(prefsContext).edit()
-                    .putBoolean(PreferenceConfiguration.ENABLE_PERF_OVERLAY_STRING, on)
+                    .putBoolean(preferenceKey(
+                            PreferenceConfiguration.ENABLE_PERF_OVERLAY_STRING), on)
                     .apply();
         }
         else if (setting == SETTING_AMBILIGHT) {
@@ -1172,7 +1239,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 prefConfig.vrAmbilight = on;
             }
             PreferenceManager.getDefaultSharedPreferences(prefsContext).edit()
-                    .putBoolean(PreferenceConfiguration.VR_AMBILIGHT_PREF_STRING, on)
+                    .putBoolean(preferenceKey(PreferenceConfiguration.VR_AMBILIGHT_PREF_STRING), on)
                     .apply();
         }
         else if (setting == SETTING_ROOM_LIGHT) {
@@ -1181,7 +1248,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 prefConfig.vrRoomLight = on;
             }
             PreferenceManager.getDefaultSharedPreferences(prefsContext).edit()
-                    .putBoolean(PreferenceConfiguration.VR_ROOM_LIGHT_PREF_STRING, on)
+                    .putBoolean(preferenceKey(PreferenceConfiguration.VR_ROOM_LIGHT_PREF_STRING), on)
                     .apply();
         }
         else if (setting == SETTING_HEAD_LOCK) {
@@ -1194,7 +1261,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 prefConfig.vrHeadLocked = on;
             }
             PreferenceManager.getDefaultSharedPreferences(prefsContext).edit()
-                    .putBoolean(PreferenceConfiguration.VR_HEAD_LOCKED_PREF_STRING, on)
+                    .putBoolean(preferenceKey(PreferenceConfiguration.VR_HEAD_LOCKED_PREF_STRING), on)
                     .apply();
         }
         else if (setting == SETTING_AMBI_LEVEL) {
@@ -1202,7 +1269,8 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 prefConfig.vrAmbilightLevel = value;
             }
             PreferenceManager.getDefaultSharedPreferences(prefsContext).edit()
-                    .putInt(PreferenceConfiguration.VR_AMBILIGHT_LEVEL_PREF_STRING, value)
+                    .putInt(preferenceKey(
+                            PreferenceConfiguration.VR_AMBILIGHT_LEVEL_PREF_STRING), value)
                     .apply();
         }
         else if (setting == SETTING_SEPARATION) {
@@ -1213,7 +1281,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 prefConfig.vrStereoSeparation = value;
             }
             PreferenceManager.getDefaultSharedPreferences(prefsContext).edit()
-                    .putInt(PreferenceConfiguration.VR_SEPARATION_PREF_STRING, value)
+                    .putInt(preferenceKey(PreferenceConfiguration.VR_SEPARATION_PREF_STRING), value)
                     .apply();
         }
         else if (setting == SETTING_CONVERGENCE) {
@@ -1221,7 +1289,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 prefConfig.vrConvergence = value;
             }
             PreferenceManager.getDefaultSharedPreferences(prefsContext).edit()
-                    .putInt(PreferenceConfiguration.VR_CONVERGENCE_PREF_STRING, value)
+                    .putInt(preferenceKey(PreferenceConfiguration.VR_CONVERGENCE_PREF_STRING), value)
                     .apply();
         }
         else if (setting == SETTING_RESET_3D) {
@@ -1231,9 +1299,9 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 prefConfig.vrConvergence = PreferenceConfiguration.DEFAULT_VR_CONVERGENCE;
             }
             PreferenceManager.getDefaultSharedPreferences(prefsContext).edit()
-                    .putInt(PreferenceConfiguration.VR_SEPARATION_PREF_STRING,
+                    .putInt(preferenceKey(PreferenceConfiguration.VR_SEPARATION_PREF_STRING),
                             PreferenceConfiguration.DEFAULT_VR_SEPARATION)
-                    .putInt(PreferenceConfiguration.VR_CONVERGENCE_PREF_STRING,
+                    .putInt(preferenceKey(PreferenceConfiguration.VR_CONVERGENCE_PREF_STRING),
                             PreferenceConfiguration.DEFAULT_VR_CONVERGENCE)
                     .apply();
         }
@@ -1254,14 +1322,22 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
             sb.append(inputState[IN_POSE + i]);
         }
 
+        if (videoControlsEnabled) {
+            // Record the aspect that this physical width belongs to. On a
+            // later portrait/landscape video restoreScreenPose converts it
+            // while preserving the saved diagonal.
+            sb.append(',').append(currentDisplayAspect);
+        }
+
         PreferenceManager.getDefaultSharedPreferences(prefsContext).edit()
-                .putString(PreferenceConfiguration.VR_SCREEN_POSE_PREF_STRING, sb.toString())
+                .putString(preferenceKey(PreferenceConfiguration.VR_SCREEN_POSE_PREF_STRING),
+                        sb.toString())
                 .apply();
     }
 
     private void restoreScreenPose() {
         String saved = PreferenceManager.getDefaultSharedPreferences(prefsContext)
-                .getString(PreferenceConfiguration.VR_SCREEN_POSE_PREF_STRING, null);
+                .getString(preferenceKey(PreferenceConfiguration.VR_SCREEN_POSE_PREF_STRING), null);
         if (saved == null) {
             return;
         }
@@ -1282,7 +1358,55 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
             return;
         }
 
+        if (videoControlsEnabled && parts.length > POSE_VALUES) {
+            try {
+                float savedAspect = Float.parseFloat(parts[POSE_VALUES]);
+                if (savedAspect > 0.0f && Float.isFinite(savedAspect)) {
+                    float scale = (float)(Math.sqrt(1.0f + savedAspect * savedAspect)
+                            / Math.sqrt(1.0f + currentDisplayAspect * currentDisplayAspect));
+                    pose[7] *= scale;
+                    pose[8] *= scale;
+                }
+            } catch (NumberFormatException ignored) { }
+        }
+
         nativeSetScreenPose(nativeCtx, pose);
+    }
+
+    private String preferenceKey(String base) {
+        if (imagePlaybackEnabled) return base + ".image";
+        if (videoControlsEnabled) return base + ".video";
+        return base;
+    }
+
+    /** Seeds each media player from the old shared values once, then keeps its own edits. */
+    private void applyMediaPreferences(PreferenceConfiguration prefs) {
+        if (!imagePlaybackEnabled && !videoControlsEnabled) return;
+        SharedPreferences saved = PreferenceManager.getDefaultSharedPreferences(prefsContext);
+        prefs.vrHeadLocked = saved.getBoolean(preferenceKey(
+                PreferenceConfiguration.VR_HEAD_LOCKED_PREF_STRING), prefs.vrHeadLocked);
+        prefs.enablePerfOverlay = saved.getBoolean(preferenceKey(
+                PreferenceConfiguration.ENABLE_PERF_OVERLAY_STRING), prefs.enablePerfOverlay);
+        prefs.vrStereoSeparation = saved.getInt(preferenceKey(
+                PreferenceConfiguration.VR_SEPARATION_PREF_STRING), prefs.vrStereoSeparation);
+        prefs.vrConvergence = saved.getInt(preferenceKey(
+                PreferenceConfiguration.VR_CONVERGENCE_PREF_STRING), prefs.vrConvergence);
+        prefs.vrAmbilight = saved.getBoolean(preferenceKey(
+                PreferenceConfiguration.VR_AMBILIGHT_PREF_STRING), prefs.vrAmbilight);
+        prefs.vrAmbilightLevel = saved.getInt(preferenceKey(
+                PreferenceConfiguration.VR_AMBILIGHT_LEVEL_PREF_STRING), prefs.vrAmbilightLevel);
+        prefs.vrRoomLight = saved.getBoolean(preferenceKey(
+                PreferenceConfiguration.VR_ROOM_LIGHT_PREF_STRING), prefs.vrRoomLight);
+        String sharpening = saved.getString(preferenceKey(
+                PreferenceConfiguration.VR_SHARPENING_PREF_STRING), null);
+        if (sharpening != null) {
+            prefs.vrSharpening = sharpening.equals("off") ? 0
+                    : sharpening.equals("normal") ? 1 : 2;
+        }
+        // Standalone media deliberately has no edge glow or sampled room
+        // lighting, even if an older per-media profile happened to contain it.
+        prefs.vrAmbilight = false;
+        prefs.vrRoomLight = false;
     }
 
     /**

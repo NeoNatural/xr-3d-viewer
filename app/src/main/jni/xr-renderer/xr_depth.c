@@ -71,10 +71,19 @@ int initDepthModel(XrCtx* ctx) {
     ctx->depthLow = malloc((size_t)n * n * sizeof(float));
     ctx->depthScratch = malloc((size_t)n * n * sizeof(float));
     ctx->depthColSums = malloc((size_t)n * sizeof(float));
+    const int motionPixels = DEPTH_MOTION_GUIDE_SIZE * DEPTH_MOTION_GUIDE_SIZE;
+    const int motionCells = DEPTH_MOTION_GRID_SIZE * DEPTH_MOTION_GRID_SIZE;
+    ctx->depthMotionPrevious = malloc((size_t)motionPixels * sizeof(float));
+    ctx->depthMotionCurrent = malloc((size_t)motionPixels * sizeof(float));
+    ctx->depthMotionDx = malloc((size_t)motionCells * sizeof(float));
+    ctx->depthMotionDy = malloc((size_t)motionCells * sizeof(float));
+    ctx->depthMotionConfidence = malloc((size_t)motionCells * sizeof(float));
     if (ctx->modelInput == NULL || ctx->modelOutput == NULL ||
             ctx->depthUploadBuf == NULL || ctx->depthEma == NULL ||
             ctx->depthLow == NULL || ctx->depthScratch == NULL ||
-            ctx->depthColSums == NULL) {
+            ctx->depthColSums == NULL || ctx->depthMotionPrevious == NULL ||
+            ctx->depthMotionCurrent == NULL || ctx->depthMotionDx == NULL ||
+            ctx->depthMotionDy == NULL || ctx->depthMotionConfidence == NULL) {
         LOGE("depth staging buffer allocation failed");
         return 0;
     }
@@ -166,6 +175,52 @@ Java_com_limelight_binding_video_XrRenderer_nativeCaptureDepthInput(JNIEnv* env,
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
     return nowNs() - startNs;
+}
+
+static float sampleBilinear(const float* image, int width, int height, float x, float y) {
+    if (x < 0.0f) x = 0.0f;
+    if (y < 0.0f) y = 0.0f;
+    if (x > width - 1.0f) x = width - 1.0f;
+    if (y > height - 1.0f) y = height - 1.0f;
+    int x0 = (int)x, y0 = (int)y;
+    int x1 = x0 + 1 < width ? x0 + 1 : x0;
+    int y1 = y0 + 1 < height ? y0 + 1 : y0;
+    float fx = x - x0, fy = y - y0;
+    float a = image[(size_t)y0 * width + x0];
+    float b = image[(size_t)y0 * width + x1];
+    float c = image[(size_t)y1 * width + x0];
+    float d = image[(size_t)y1 * width + x1];
+    return (a + fx * (b - a)) * (1.0f - fy) + (c + fx * (d - c)) * fy;
+}
+
+static void sampleMotionField(const XrCtx* ctx, float x, float y,
+                              float* dx, float* dy, float* confidence) {
+    const int grid = DEPTH_MOTION_GRID_SIZE;
+    // A motion node is centred in each 8x8 depth block.
+    float gx = x * grid / DEPTH_TEX_SIZE - 0.5f;
+    float gy = y * grid / DEPTH_TEX_SIZE - 0.5f;
+    *dx = sampleBilinear(ctx->depthMotionDx, grid, grid, gx, gy) * 2.0f;
+    *dy = sampleBilinear(ctx->depthMotionDy, grid, grid, gx, gy) * 2.0f;
+    *confidence = sampleBilinear(ctx->depthMotionConfidence, grid, grid, gx, gy);
+}
+
+static void buildMotionGuide(XrCtx* ctx) {
+    const int n = DEPTH_TEX_SIZE;
+    const int m = DEPTH_MOTION_GUIDE_SIZE;
+    for (int y = 0; y < m; y++) {
+        for (int x = 0; x < m; x++) {
+            float sum = 0.0f;
+            for (int yy = 0; yy < 2; yy++) {
+                const float* row = ctx->modelInput
+                        + (size_t)(n - 1 - (y * 2 + yy)) * n * 3;
+                for (int xx = 0; xx < 2; xx++) {
+                    const float* rgb = row + (x * 2 + xx) * 3;
+                    sum += rgb[0] * 0.2126f + rgb[1] * 0.7152f + rgb[2] * 0.0722f;
+                }
+            }
+            ctx->depthMotionCurrent[(size_t)y * m + x] = sum * 0.25f;
+        }
+    }
 }
 
 // Waits for the last capture's readback to land, then copies it out of the
@@ -282,9 +337,20 @@ Java_com_limelight_binding_video_XrRenderer_nativeUploadDepth(JNIEnv* env, jobje
     const int n = DEPTH_TEX_SIZE;
     long startNs = nowNs();
 
+    buildMotionGuide(ctx);
+    float motionConfidence = 0.0f;
+    if (ctx->depthMotionValid) {
+        motionConfidence = estimateDepthMotionGrid(
+                ctx->depthMotionCurrent, ctx->depthMotionPrevious,
+                DEPTH_MOTION_GUIDE_SIZE, ctx->depthMotionDx, ctx->depthMotionDy,
+                ctx->depthMotionConfidence, DEPTH_MOTION_GRID_SIZE,
+                DEPTH_MOTION_SEARCH_RADIUS);
+    }
+
     float lo, hi;
     robustRange(ctx->modelOutput, n * n, &lo, &hi);
-    if (!ctx->rangeValid) {
+    int seed = !ctx->depthEmaValid || !ctx->depthMotionValid || motionConfidence < 0.08f;
+    if (!ctx->rangeValid || seed) {
         ctx->smoothLo = lo;
         ctx->smoothHi = hi;
         ctx->rangeValid = 1;
@@ -295,7 +361,9 @@ Java_com_limelight_binding_video_XrRenderer_nativeUploadDepth(JNIEnv* env, jobje
     }
     float scale = 1.0f / (ctx->smoothHi - ctx->smoothLo);
     float alpha = ctx->depthAlpha;
-    int seed = !ctx->depthEmaValid;
+    if (!seed) {
+        memcpy(ctx->depthScratch, ctx->depthEma, (size_t)n * n * sizeof(float));
+    }
 
     for (int y = 0; y < n; y++) {
         const float* src = ctx->modelOutput + (size_t)(n - 1 - y) * n;
@@ -304,10 +372,54 @@ Java_com_limelight_binding_video_XrRenderer_nativeUploadDepth(JNIEnv* env, jobje
             float v = (src[x] - ctx->smoothLo) * scale;
             if (v < 0.0f) v = 0.0f;
             if (v > 1.0f) v = 1.0f;
-            ema[x] = seed ? v : ema[x] + alpha * (v - ema[x]);
+            if (seed) {
+                ema[x] = v;
+            } else {
+                float dx, dy, confidence;
+                sampleMotionField(ctx, (float)x, (float)y, &dx, &dy, &confidence);
+                float previousX = x + dx;
+                float previousY = y + dy;
+                if (previousX < 0.0f || previousY < 0.0f
+                        || previousX > n - 1.0f || previousY > n - 1.0f) {
+                    confidence = 0.0f;
+                }
+                float previous = sampleBilinear(ctx->depthScratch, n, n,
+                                                previousX, previousY);
+                float guideX = x * 0.5f;
+                float guideY = y * 0.5f;
+                float oldGuide = sampleBilinear(ctx->depthMotionPrevious,
+                                                DEPTH_MOTION_GUIDE_SIZE,
+                                                DEPTH_MOTION_GUIDE_SIZE,
+                                                guideX + dx * 0.5f,
+                                                guideY + dy * 0.5f);
+                float newGuide = sampleBilinear(ctx->depthMotionCurrent,
+                                                DEPTH_MOTION_GUIDE_SIZE,
+                                                DEPTH_MOTION_GUIDE_SIZE,
+                                                guideX, guideY);
+                float photoConfidence = 1.0f - fabsf(newGuide - oldGuide) / 0.12f;
+                if (photoConfidence < 0.0f) photoConfidence = 0.0f;
+                if (photoConfidence > 1.0f) photoConfidence = 1.0f;
+                confidence *= photoConfidence;
+                float delta = v - previous;
+                float adaptiveAlpha = motionAdaptiveDepthAlpha(alpha, delta);
+                // Unreliable and newly revealed pixels use current depth.
+                // Reliable pixels retain the motion-aligned history.
+                float effectiveAlpha = 1.0f - confidence * (1.0f - adaptiveAlpha);
+                ema[x] = previous + effectiveAlpha * delta;
+            }
         }
     }
     ctx->depthEmaValid = 1;
+    memcpy(ctx->depthMotionPrevious, ctx->depthMotionCurrent,
+           (size_t)DEPTH_MOTION_GUIDE_SIZE * DEPTH_MOTION_GUIDE_SIZE * sizeof(float));
+    ctx->depthMotionValid = 1;
+    ctx->depthMotionConfidenceTotal += motionConfidence;
+    if (++ctx->depthMotionLogFrames == 120) {
+        LOGI("depth motion alignment confidence %.2f",
+             ctx->depthMotionConfidenceTotal / ctx->depthMotionLogFrames);
+        ctx->depthMotionLogFrames = 0;
+        ctx->depthMotionConfidenceTotal = 0.0f;
+    }
 
     float kg = ctx->depthGlobal;
     float kl = ctx->depthLocal;

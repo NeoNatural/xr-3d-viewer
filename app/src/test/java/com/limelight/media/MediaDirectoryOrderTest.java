@@ -16,11 +16,14 @@ public class MediaDirectoryOrderTest {
         MediaEntry old = new MediaEntry("smb://nas/share/old.jpg", "old.jpg", false, 1, 100);
         MediaEntry z = new MediaEntry("smb://nas/share/z.jpg", "z.jpg", false, 1, 300);
         MediaEntry a = new MediaEntry("smb://nas/share/a.jpg", "a.jpg", false, 1, 300);
-        List<MediaEntry> entries = new ArrayList<>(Arrays.asList(old, z, a));
+        MediaEntry newFolder = new MediaEntry("smb://nas/share/new/", "new", true, 0, 400);
+        MediaEntry oldFolder = new MediaEntry("smb://nas/share/old/", "old", true, 0, 50);
+        List<MediaEntry> entries = new ArrayList<>(
+                Arrays.asList(newFolder, old, oldFolder, z, a));
 
         MediaDirectoryOrder.newestFirst(entries);
 
-        assertEquals(Arrays.asList(a, z, old), entries);
+        assertEquals(Arrays.asList(a, z, old, newFolder, oldFolder), entries);
     }
 
     @Test

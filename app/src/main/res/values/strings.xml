@@ -372,5 +372,6 @@
     <string name="analogscroll_right">Right analog stick</string>
     <string name="analogscroll_left">Left analog stick</string>
     <string name="test_static_image">Test 3D Image</string>
+    <string name="open_local_video">Open Video</string>
     <string name="browse_smb">Browse SMB</string>
 </resources>

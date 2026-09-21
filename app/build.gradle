@@ -257,6 +257,10 @@ android {
 }
 
 dependencies {
+    // Local/remote file playback. Video frames are decoded by MediaCodec directly
+    // into XrRenderer's Surface; they are never copied through a CPU Bitmap.
+    // 1.9+ requires API 23. Keep the app's existing API 21 compatibility.
+    implementation 'androidx.media3:media3-exoplayer:1.8.1'
     // NOVA's multi-credit jcifs-ng fork is the first direct SMB backend.
     implementation('com.github.nova-video-player:jcifs-ng:v2.1.10-multicredit3') {
         exclude group: 'org.slf4j', module: 'slf4j-log4j12'

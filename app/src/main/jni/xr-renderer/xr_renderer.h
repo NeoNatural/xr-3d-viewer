@@ -225,6 +225,10 @@ static inline long nowNs(void) {
 #define IMAGE_NAV_TEX_W 512
 #define IMAGE_NAV_TEX_H 112
 #define IMAGE_NAV_STATES 8
+#define VIDEO_CONTROL_TEX_W 1024
+#define VIDEO_CONTROL_TEX_H 128
+#define VIDEO_CONTROL_STATES 12
+#define MEDIA_CONTROL_STATES VIDEO_CONTROL_STATES
 // How far past each edge that reaches, as a fraction of the screen
 #define HALO_FRAC 0.5f
 // How far the ray runs when it is aimed at nothing at all, in metres
@@ -433,6 +437,7 @@ typedef struct {
 
     int videoWidth;
     int videoHeight;
+    float videoDisplayAspect;
 
     // Stereo test path. When stereoMode is not OFF the swapchain is double
     // wide and each eye gets its own warped copy of the frame
@@ -486,6 +491,17 @@ typedef struct {
     float* depthLow;
     float* depthScratch;
     float* depthColSums;
+    // Half-resolution luminance guides and a coarse backward motion field
+    // align the previous depth before temporal filtering. This avoids leaving
+    // the old silhouette behind when an object or the camera moves.
+    float* depthMotionPrevious;
+    float* depthMotionCurrent;
+    float* depthMotionDx;
+    float* depthMotionDy;
+    float* depthMotionConfidence;
+    int depthMotionValid;
+    int depthMotionLogFrames;
+    float depthMotionConfidenceTotal;
     float depthGlobal;
     float depthLocal;
     int depthEmaValid;
@@ -496,6 +512,12 @@ typedef struct {
     float rangeAlpha;
 
     // Edge aware upsample of the depth map, quarter of the video size
+    GLuint motionProgram;
+    GLint motionTexMatrixUniform;
+    GLuint motionTexture;
+    GLuint motionFbo;
+    int motionWidth;
+    int motionHeight;
     GLuint upsampleProgram;
     GLint upsampleTexMatrixUniform;
     GLint upsampleSigmaUniform;
@@ -802,14 +824,19 @@ typedef struct {
     // modal was covering as soon as it closes.
     int triggerSwallowed[SRC_COUNT];
     int imageNavEnabled;
+    int videoControlsEnabled;
     int imageNavHover;
     int imageNavPressed;
     // Bit 0 left and bit 1 right. Missing depth turns that button red.
     int imageNavDepthReadyMask;
-    XrSwapchain imageNavSwapchains[IMAGE_NAV_STATES];
-    XrSwapchainImageOpenGLESKHR* imageNavImages[IMAGE_NAV_STATES];
-    uint32_t imageNavImageCounts[IMAGE_NAV_STATES];
+    XrSwapchain imageNavSwapchains[MEDIA_CONTROL_STATES];
+    XrSwapchainImageOpenGLESKHR* imageNavImages[MEDIA_CONTROL_STATES];
+    uint32_t imageNavImageCounts[MEDIA_CONTROL_STATES];
     int imageNavReady;
+    int videoPlaying;
+    float videoProgress;
+    int videoControlArtState;
+    int videoControlArtDirty;
     // Diagnostics for the click path, written but never acted on. The analog
     // value is kept as the action reported it, and the low water mark and the
     // dip count run for the length of one press, which is what says whether a
@@ -1159,6 +1186,7 @@ int createPointerSwapchain(XrCtx* ctx);
 int uploadPointerArt(XrCtx* ctx);
 void imageNavPose(XrCtx* ctx, XrPosef screenPose, float* width, float* height,
                   XrPosef* pose);
+int updateVideoControlArt(XrCtx* ctx, int state);
 
 // xr_debug.c: setprop knobs and frame capture
 void propFlag(const char* name, int* target);

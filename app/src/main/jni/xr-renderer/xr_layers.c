@@ -479,18 +479,30 @@ static void addBarButtonLayers(XrCtx* ctx, const FrameView* view, FrameLayers* l
 }
 
 static void addImageNavLayer(XrCtx* ctx, const FrameView* view, FrameLayers* layers) {
-    if (!ctx->imageNavEnabled || !ctx->imageNavReady || ctx->pickerOpen
+    if ((!ctx->imageNavEnabled && !ctx->videoControlsEnabled) || ctx->pickerOpen
             || ctx->cogOpen || ctx->kbOpen || ctx->exitConfirmOpen) return;
-    int state = ctx->imageNavPressed ? ctx->imageNavPressed + 2 : ctx->imageNavHover;
-    int pendingMask = (~ctx->imageNavDepthReadyMask) & 3;
-    if (pendingMask != 0) state = 4 + pendingMask;
-    if (state < 0 || state >= IMAGE_NAV_STATES) state = 0;
+    int texW = IMAGE_NAV_TEX_W;
+    int texH = IMAGE_NAV_TEX_H;
+    int state;
+    if (ctx->videoControlsEnabled) {
+        state = (ctx->videoPlaying ? 6 : 0) + ctx->imageNavHover;
+        if (state < 0 || state >= VIDEO_CONTROL_STATES) state = 0;
+        if (!updateVideoControlArt(ctx, state)) return;
+        texW = VIDEO_CONTROL_TEX_W;
+        texH = VIDEO_CONTROL_TEX_H;
+    } else {
+        if (!ctx->imageNavReady) return;
+        state = ctx->imageNavPressed ? ctx->imageNavPressed + 2 : ctx->imageNavHover;
+        int pendingMask = (~ctx->imageNavDepthReadyMask) & 3;
+        if (pendingMask != 0) state = 4 + pendingMask;
+        if (state < 0 || state >= IMAGE_NAV_STATES) state = 0;
+    }
     float width, height;
     XrPosef pose;
     imageNavPose(ctx, view->screenPose, &width, &height, &pose);
     quadLayer(&layers->imageNav, layers->sharpenChain,
               XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT,
-              ctx->imageNavSwapchains[state], IMAGE_NAV_TEX_W, IMAGE_NAV_TEX_H,
+              ctx->imageNavSwapchains[state], texW, texH,
               view->space, pose, width, height);
     pushLayer(ctx, layers, &layers->imageNav);
 }
@@ -828,7 +840,7 @@ Java_com_limelight_binding_video_XrRenderer_nativeEndFrame(JNIEnv* env, jobject 
     }
 
     FrameView view;
-    view.aspect = (float)ctx->videoHeight / (float)ctx->videoWidth;
+    view.aspect = ctx->videoDisplayAspect;
     view.stereo = ctx->stereoMode != DEPTH_MODE_OFF;
     int roomStyle = roomEffective(ctx);
     view.roomOn = roomStyle > 0;

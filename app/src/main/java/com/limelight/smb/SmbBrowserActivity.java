@@ -15,6 +15,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.limelight.StaticImageXrActivity;
+import com.limelight.VideoXrActivity;
 import com.limelight.binding.video.StillImageDepthBatcher;
 import com.limelight.media.MediaEntry;
 import com.limelight.media.MediaDirectoryOrder;
@@ -280,8 +281,24 @@ public final class SmbBrowserActivity extends Activity {
             if (adapter != null) adapter.close();
             adapter = null;
             startActivity(intent);
+        } else if (SmbClientManager.isVideo(name)) {
+            List<MediaEntry> videos = SmbClientManager.videoSnapshot(currentUri);
+            ArrayList<String> uris = new ArrayList<>(videos.size());
+            int selected = 0;
+            for (int i = 0; i < videos.size(); i++) {
+                MediaEntry video = videos.get(i);
+                uris.add(video.uri);
+                if (video.uri.equals(entry.uri)) selected = i;
+            }
+            Intent intent = new Intent(this, VideoXrActivity.class);
+            intent.putStringArrayListExtra(VideoXrActivity.EXTRA_SMB_VIDEO_URIS, uris);
+            intent.putExtra(VideoXrActivity.EXTRA_START_INDEX, selected);
+            listView.setAdapter(null);
+            if (adapter != null) adapter.close();
+            adapter = null;
+            startActivity(intent);
         } else {
-            Toast.makeText(this, "Image files are supported in this build.",
+            Toast.makeText(this, "Supported media: JPEG, PNG, WebP, MP4, MKV, WebM, M4V, MOV.",
                     Toast.LENGTH_SHORT).show();
         }
     }

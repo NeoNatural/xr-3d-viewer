@@ -5,9 +5,11 @@
 
 void imageNavPose(XrCtx* ctx, XrPosef screenPose, float* width, float* height,
                   XrPosef* pose) {
-    *width = ctx->screenWidth * 0.31f;
-    *height = *width * IMAGE_NAV_TEX_H / IMAGE_NAV_TEX_W;
-    float screenHeight = ctx->screenWidth * (float)ctx->videoHeight / ctx->videoWidth;
+    int texW = ctx->videoControlsEnabled ? VIDEO_CONTROL_TEX_W : IMAGE_NAV_TEX_W;
+    int texH = ctx->videoControlsEnabled ? VIDEO_CONTROL_TEX_H : IMAGE_NAV_TEX_H;
+    *width = ctx->screenWidth * (ctx->videoControlsEnabled ? 0.62f : 0.31f);
+    *height = *width * texH / texW;
+    float screenHeight = ctx->screenWidth * ctx->videoDisplayAspect;
     Vec3 offset = { 0.0f, screenHeight * 0.5f + *height * 0.5f
                            + ctx->screenWidth * 0.018f, 0.012f };
     Vec3 world = quatRotate(screenPose.orientation, offset);
@@ -195,7 +197,7 @@ XrPosef cogPanelPose(XrCtx* ctx, float* outWidth, float* outHeight) {
 
     // The button hangs below the screen, so the panel is placed off it rather
     // than off the screen. Same height the other placements are given.
-    float screenHeight = ctx->screenWidth * (float)ctx->videoHeight / (float)ctx->videoWidth;
+    float screenHeight = ctx->screenWidth * ctx->videoDisplayAspect;
     Vec3 button;
     float side;
     cogButtonPlacement(ctx, screenHeight, &button, &side);
@@ -243,7 +245,7 @@ XrPosef kbPanelPose(XrCtx* ctx, float* outWidth, float* outHeight) {
     *outWidth = width;
     *outHeight = height;
 
-    float screenHeight = ctx->screenWidth * (float)ctx->videoHeight / (float)ctx->videoWidth;
+    float screenHeight = ctx->screenWidth * ctx->videoDisplayAspect;
     Vec3 local;
     local.x = 0.0f;
     // Top edge the same distance under the picture that the bar sits at
@@ -303,7 +305,7 @@ XrPosef exitPromptPose(XrCtx* ctx, float* outWidth, float* outHeight) {
     *outWidth = width;
     *outHeight = height;
 
-    float screenHeight = ctx->screenWidth * (float)ctx->videoHeight / (float)ctx->videoWidth;
+    float screenHeight = ctx->screenWidth * ctx->videoDisplayAspect;
     Vec3 button;
     float side;
     exitButtonPlacement(ctx, screenHeight, &button, &side);

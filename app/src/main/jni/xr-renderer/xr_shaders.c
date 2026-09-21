@@ -78,6 +78,56 @@ const char* const FRAGMENT_SRC =
     "    fragColor.rgb *= u_tint;\n"
     "}\n";
 
+// Late depth alignment. The depth texture carries the low-resolution RGB
+// guide from the frame that produced it, while u_texture is the video frame
+// being displayed now. A small block match produces current-to-guide motion
+// at 64x64 every displayed frame, covering the time between depth inferences.
+const char* const MOTION_FRAGMENT_SRC =
+    "#version 300 es\n"
+    "#extension GL_OES_EGL_image_external_essl3 : require\n"
+    "precision highp float;\n"
+    "in vec2 v_plain;\n"
+    "uniform samplerExternalOES u_texture;\n"
+    "uniform sampler2D u_depth;\n"
+    "uniform mat4 u_texmatrix;\n"
+    "out vec4 fragColor;\n"
+    "const float N = 256.0;\n"
+    "const int R = 8;\n"
+    "vec3 currentAt(vec2 uv) {\n"
+    "    return texture(u_texture, (u_texmatrix * vec4(uv, 0.0, 1.0)).xy).rgb;\n"
+    "}\n"
+    "void main() {\n"
+    "    vec2 h = vec2(1.0 / N, 0.0);\n"
+    "    vec2 v = vec2(0.0, 1.0 / N);\n"
+    "    vec3 c0 = currentAt(v_plain);\n"
+    "    vec3 cx0 = currentAt(v_plain - h);\n"
+    "    vec3 cx1 = currentAt(v_plain + h);\n"
+    "    vec3 cy0 = currentAt(v_plain - v);\n"
+    "    vec3 cy1 = currentAt(v_plain + v);\n"
+    "    float best = 1e20;\n"
+    "    vec2 bestOff = vec2(0.0);\n"
+    "    for (int dy = -R; dy <= R; dy++) {\n"
+    "        for (int dx = -R; dx <= R; dx++) {\n"
+    "            vec2 p = vec2(float(dx), float(dy));\n"
+    "            vec2 uv = clamp(v_plain + p / N, vec2(0.0), vec2(1.0));\n"
+    "            vec3 d0 = c0 - texture(u_depth, uv).rgb;\n"
+    "            vec3 d1 = cx0 - texture(u_depth, clamp(uv - h, vec2(0.0), vec2(1.0))).rgb;\n"
+    "            vec3 d2 = cx1 - texture(u_depth, clamp(uv + h, vec2(0.0), vec2(1.0))).rgb;\n"
+    "            vec3 d3 = cy0 - texture(u_depth, clamp(uv - v, vec2(0.0), vec2(1.0))).rgb;\n"
+    "            vec3 d4 = cy1 - texture(u_depth, clamp(uv + v, vec2(0.0), vec2(1.0))).rgb;\n"
+    "            float error = dot(d0, d0) + dot(d1, d1) + dot(d2, d2)\n"
+    "                        + dot(d3, d3) + dot(d4, d4);\n"
+    // Prefer zero when several offsets explain a flat or repetitive patch.
+    "            float score = error + 0.0001 * dot(p, p);\n"
+    "            if (score < best) { best = score; bestOff = p; }\n"
+    "        }\n"
+    "    }\n"
+    "    float residual = sqrt(best * 0.2);\n"
+    "    float confidence = clamp(1.0 - residual / 0.20, 0.0, 1.0);\n"
+    "    vec2 encoded = bestOff / (2.0 * float(R)) + 0.5;\n"
+    "    fragColor = vec4(encoded, confidence, 1.0);\n"
+    "}\n";
+
 // Joint bilateral upsample of the depth map. The model output is 256x256
 // against a 4K frame, so one depth texel covers a 15x8 block and every depth
 // boundary reaches the warp as a 15 pixel ramp. That ramp is the halo: it
@@ -100,6 +150,7 @@ const char* const UPSAMPLE_FRAGMENT_SRC =
     "in vec2 v_plain;\n"
     "uniform samplerExternalOES u_texture;\n"
     "uniform sampler2D u_depth;\n"
+    "uniform sampler2D u_motion;\n"
     "uniform mat4 u_texmatrix;\n"
     "uniform float u_sigmaR;\n"
     "uniform float u_sharp;\n"
@@ -109,7 +160,9 @@ const char* const UPSAMPLE_FRAGMENT_SRC =
     "const float FLAT = 0.05;\n"
     "void main() {\n"
     "    vec3 hi = texture(u_texture, (u_texmatrix * vec4(v_plain, 0.0, 1.0)).xy).rgb;\n"
-    "    vec2 lp = v_plain * N - 0.5;\n"
+    "    vec3 motion = texture(u_motion, v_plain).rgb;\n"
+    "    vec2 flow = (motion.rg - 0.5) * 16.0 * motion.b;\n"
+    "    vec2 lp = v_plain * N + flow - 0.5;\n"
     "    ivec2 base = ivec2(floor(lp));\n"
     "    float num = 0.0;\n"
     "    float den = 0.0;\n"

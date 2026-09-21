@@ -75,10 +75,12 @@ int createPointerSwapchain(XrCtx* ctx) {
                             &ctx->pointerImageCount)) {
         return 0;
     }
-    if (ctx->imageNavEnabled) {
-        for (int state = 0; state < IMAGE_NAV_STATES; state++) {
-            createArtSwapchain(ctx, IMAGE_NAV_TEX_W, IMAGE_NAV_TEX_H,
-                               "create image navigation swapchain",
+    if (ctx->imageNavEnabled || ctx->videoControlsEnabled) {
+        int texW = ctx->videoControlsEnabled ? VIDEO_CONTROL_TEX_W : IMAGE_NAV_TEX_W;
+        int texH = ctx->videoControlsEnabled ? VIDEO_CONTROL_TEX_H : IMAGE_NAV_TEX_H;
+        int stateCount = ctx->videoControlsEnabled ? VIDEO_CONTROL_STATES : IMAGE_NAV_STATES;
+        for (int state = 0; state < stateCount; state++) {
+            createArtSwapchain(ctx, texW, texH, "create media control swapchain",
                                &ctx->imageNavSwapchains[state], &ctx->imageNavImages[state],
                                &ctx->imageNavImageCounts[state]);
         }
@@ -235,6 +237,98 @@ static void buildImageNavArt(XrCtx* ctx) {
     }
     ctx->imageNavReady = allReady;
     free(px);
+}
+
+static int inCircle(float x, float y, float cx, float cy, float radius) {
+    float dx = x - cx, dy = y - cy;
+    return dx * dx + dy * dy <= radius * radius;
+}
+
+// The video strip changes at four Hz as playback advances. Only the sheet
+// currently being shown is redrawn, on the GL-owning frame thread.
+int updateVideoControlArt(XrCtx* ctx, int state) {
+    if (!ctx->videoControlsEnabled || state < 0 || state >= VIDEO_CONTROL_STATES) return 0;
+    if (!ctx->videoControlArtDirty && ctx->videoControlArtState == state) {
+        return ctx->imageNavReady;
+    }
+    const int width = VIDEO_CONTROL_TEX_W;
+    const int height = VIDEO_CONTROL_TEX_H;
+    unsigned char* px = calloc((size_t)width * height * 4, 1);
+    if (px == NULL) return 0;
+    int hover = state % 6;
+    int playing = state >= 6;
+    float centers[5] = { 61.0f, 164.0f, 266.0f, 870.0f, 973.0f };
+    float cy = height * 0.5f;
+    float trackL = VIDEO_TRACK_L * width;
+    float trackR = VIDEO_TRACK_R * width;
+    float thumbX = trackL + (trackR - trackL) * ctx->videoProgress;
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            unsigned char* p = px + ((y * width) + x) * 4;
+            int inside = x >= 2 && x < width - 2 && y >= 2 && y < height - 2;
+            if (inside) {
+                p[0] = 10; p[1] = 14; p[2] = 22; p[3] = 205;
+            }
+            for (int b = 0; b < 5; b++) {
+                if (inCircle(x + 0.5f, y + 0.5f, centers[b], cy, 44.0f)) {
+                    int lit = hover == b + 1;
+                    p[0] = lit ? 35 : 23;
+                    p[1] = lit ? 126 : 32;
+                    p[2] = lit ? 180 : 47;
+                    p[3] = lit ? 245 : 220;
+                }
+            }
+
+            float fy = y + 0.5f;
+            if (x >= (int)trackL && x <= (int)trackR && fabsf(fy - cy) <= 4.0f) {
+                int elapsed = x <= (int)thumbX;
+                p[0] = elapsed ? 70 : 78;
+                p[1] = elapsed ? 190 : 84;
+                p[2] = elapsed ? 238 : 94;
+                p[3] = 255;
+            }
+            if (inCircle(x + 0.5f, fy, thumbX, cy, 11.0f)) {
+                p[0] = 235; p[1] = 250; p[2] = 255; p[3] = 255;
+            }
+
+            // Previous/next have an outer stop bar; ten-second seek uses only
+            // the arrow, keeping the adjacent controls visually distinct.
+            float dy = fy - cy;
+            for (int b = 0; b < 5; b++) {
+                if (b == 2) continue;
+                float dx = x + 0.5f - centers[b];
+                int pointsLeft = b < 2;
+                int arrow = dx > -18.0f && dx < 18.0f
+                        && fabsf(dy) < (pointsLeft ? dx + 18.0f : 18.0f - dx) * 0.68f;
+                int stop = (b == 0 && fabsf(dx + 23.0f) < 3.0f && fabsf(dy) < 22.0f)
+                        || (b == 4 && fabsf(dx - 23.0f) < 3.0f && fabsf(dy) < 22.0f);
+                if (arrow || stop) p[0] = p[1] = p[2] = p[3] = 255;
+            }
+
+            float pdx = x + 0.5f - centers[2];
+            float pdy = fy - cy;
+            int transport;
+            if (playing) {
+                transport = (fabsf(pdx - 10.0f) < 4.0f || fabsf(pdx + 10.0f) < 4.0f)
+                        && fabsf(pdy) < 22.0f;
+            } else {
+                // Base on the left and point on the right.
+                transport = pdx > -18.0f && pdx < 18.0f
+                        && fabsf(pdy) < (18.0f - pdx) * 0.68f;
+            }
+            if (transport) p[0] = p[1] = p[2] = p[3] = 255;
+        }
+    }
+    int ok = uploadArt(ctx, ctx->imageNavSwapchains[state], ctx->imageNavImages[state],
+                       px, width, height);
+    free(px);
+    if (ok) {
+        ctx->imageNavReady = 1;
+        ctx->videoControlArtState = state;
+        ctx->videoControlArtDirty = 0;
+    }
+    return ok;
 }
 
 static void buildHandleArt(XrCtx* ctx) {
@@ -428,7 +522,8 @@ int uploadPointerArt(XrCtx* ctx) {
     free(px);
     if (ctx->pointerArtReady) {
         buildHandleArt(ctx);
-        buildImageNavArt(ctx);
+        if (ctx->imageNavEnabled) buildImageNavArt(ctx);
+        else if (ctx->videoControlsEnabled) updateVideoControlArt(ctx, 0);
     }
     return ctx->pointerArtReady;
 }

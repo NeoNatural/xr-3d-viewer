@@ -495,6 +495,11 @@ static void destroyCtx(JNIEnv* env, XrCtx* ctx) {
     free(ctx->depthLow);
     free(ctx->depthScratch);
     free(ctx->depthColSums);
+    free(ctx->depthMotionPrevious);
+    free(ctx->depthMotionCurrent);
+    free(ctx->depthMotionDx);
+    free(ctx->depthMotionDy);
+    free(ctx->depthMotionConfidence);
 
     // Destroying the context below would take these anyway. Said explicitly so
     // the glow's resources go together with the swapchain it draws into.
@@ -527,7 +532,7 @@ static void destroyCtx(JNIEnv* env, XrCtx* ctx) {
     destroyArtSwapchain(&ctx->swapchain, &ctx->swapchainImages);
     destroyArtSwapchain(&ctx->overlaySwapchain, &ctx->overlayImages);
     destroyArtSwapchain(&ctx->pointerSwapchain, &ctx->pointerImages);
-    for (int state = 0; state < IMAGE_NAV_STATES; state++) {
+    for (int state = 0; state < MEDIA_CONTROL_STATES; state++) {
         destroyArtSwapchain(&ctx->imageNavSwapchains[state], &ctx->imageNavImages[state]);
     }
     destroyArtSwapchain(&ctx->barSwapchain, &ctx->barImages);
@@ -596,16 +601,20 @@ Java_com_limelight_binding_video_XrRenderer_nativeInit(JNIEnv* env, jobject thiz
                                                        jboolean handTracking, jint sharpenMode,
                                                        jboolean perfOverlay, jboolean ambilight,
                                                        jint ambiLevel, jboolean roomLight,
-                                                       jint envResTier, jboolean imageNavigation) {
+                                                       jint envResTier, jint mediaControlsMode) {
     XrCtx* ctx = calloc(1, sizeof(XrCtx));
     atomic_init(&ctx->stillDepthPending, 0);
     ctx->handsEnabled = handTracking;
-    ctx->imageNavEnabled = imageNavigation;
+    ctx->imageNavEnabled = mediaControlsMode == MEDIA_CONTROLS_IMAGES;
+    ctx->videoControlsEnabled = mediaControlsMode == MEDIA_CONTROLS_VIDEO;
     ctx->imageNavDepthReadyMask = 3;
+    ctx->videoControlArtState = -1;
+    ctx->videoControlArtDirty = 1;
     // EnvResTier: 0 low, 1 standard, 2 high, 3 ultra
     ctx->envResTier = envResTier;
     ctx->videoWidth = width;
     ctx->videoHeight = height;
+    ctx->videoDisplayAspect = (float)height / (float)width;
     ctx->stereoMode = stereoMode;
     ctx->depthDebug = depthDebug;
     ctx->sessionState = XR_SESSION_STATE_UNKNOWN;
@@ -712,6 +721,39 @@ Java_com_limelight_binding_video_XrRenderer_nativeSetImageNavigationDepthReady(
     XrCtx* ctx = (XrCtx*)(intptr_t)handle;
     if (ctx == NULL) return;
     ctx->imageNavDepthReadyMask = (leftReady ? 1 : 0) | (rightReady ? 2 : 0);
+}
+
+JNIEXPORT void JNICALL
+Java_com_limelight_binding_video_XrRenderer_nativeSetVideoControlState(
+        JNIEnv* env, jobject thiz, jlong handle, jboolean playing, jfloat progress) {
+    XrCtx* ctx = (XrCtx*)(intptr_t)handle;
+    if (ctx == NULL || !ctx->videoControlsEnabled) return;
+    float clamped = progress < 0.0f ? 0.0f : progress > 1.0f ? 1.0f : progress;
+    if (ctx->videoPlaying != (playing ? 1 : 0)
+            || fabsf(ctx->videoProgress - clamped) >= 0.000001f) {
+        ctx->videoPlaying = playing ? 1 : 0;
+        ctx->videoProgress = clamped;
+        ctx->videoControlArtDirty = 1;
+    }
+}
+
+JNIEXPORT void JNICALL
+Java_com_limelight_binding_video_XrRenderer_nativeSetVideoDisplayAspect(
+        JNIEnv* env, jobject thiz, jlong handle, jfloat heightOverWidth) {
+    XrCtx* ctx = (XrCtx*)(intptr_t)handle;
+    if (ctx == NULL || heightOverWidth <= 0.0f || !isfinite(heightOverWidth)) return;
+    // The video's screen-size control represents its diagonal. Keep that
+    // diagonal fixed when next/previous changes between landscape and portrait.
+    if (ctx->videoControlsEnabled && ctx->screenWidth > 0.0f
+            && ctx->videoDisplayAspect > 0.0f) {
+        float oldDiagonalScale = sqrtf(1.0f
+                + ctx->videoDisplayAspect * ctx->videoDisplayAspect);
+        float newDiagonalScale = sqrtf(1.0f + heightOverWidth * heightOverWidth);
+        float widthScale = oldDiagonalScale / newDiagonalScale;
+        ctx->screenWidth *= widthScale;
+        ctx->screenRadius *= widthScale;
+    }
+    ctx->videoDisplayAspect = heightOverWidth;
 }
 
 JNIEXPORT void JNICALL

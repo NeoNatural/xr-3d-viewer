@@ -37,11 +37,14 @@ import android.content.Intent;
 import com.limelight.smb.SmbBrowserActivity;
 import android.content.ServiceConnection;
 import android.content.res.Configuration;
+import android.database.Cursor;
+import android.net.Uri;
 import android.opengl.GLSurfaceView;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
+import android.provider.DocumentsContract;
 import android.view.ContextMenu;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -60,8 +63,11 @@ import org.xmlpull.v1.XmlPullParserException;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
+import java.util.ArrayList;
+import java.util.Comparator;
 
 public class PcView extends Activity implements AdapterFragmentCallbacks {
+    private static final int OPEN_LOCAL_VIDEO_ID = 12;
     private RelativeLayout noPcFoundLayout;
     private PcGridAdapter pcGridAdapter;
     private ShortcutHelper shortcutHelper;
@@ -158,6 +164,7 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
         ImageButton helpButton = findViewById(R.id.helpButton);
         findViewById(R.id.testStaticImage).setOnClickListener(v ->
                 startActivity(new Intent(PcView.this, StaticImageXrActivity.class)));
+        findViewById(R.id.openLocalVideo).setOnClickListener(v -> openLocalVideo());
         findViewById(R.id.browseSmb).setOnClickListener(v ->
                 startActivity(new Intent(PcView.this, SmbBrowserActivity.class)));
 
@@ -200,6 +207,108 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
             noPcFoundLayout.setVisibility(View.INVISIBLE);
         }
         pcGridAdapter.notifyDataSetChanged();
+    }
+
+    private void openLocalVideo() {
+        // A single ACTION_OPEN_DOCUMENT grant cannot access neighboring files,
+        // so previous/next would have no playlist. A tree grant lets us build
+        // the complete video list for the selected local folder.
+        Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+        startActivityForResult(picker, OPEN_LOCAL_VIDEO_ID);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != OPEN_LOCAL_VIDEO_ID || resultCode != RESULT_OK || data == null) {
+            return;
+        }
+        Uri directory = data.getData();
+        if (directory == null) return;
+        int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        try {
+            getContentResolver().takePersistableUriPermission(directory, flags);
+        } catch (SecurityException ignored) {
+            // Some providers keep the grant only for this activity stack.
+        }
+        ArrayList<LocalVideo> videos = listLocalVideos(directory);
+        if (videos.isEmpty()) {
+            Toast.makeText(this, "No supported videos in this folder.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        CharSequence[] names = new CharSequence[videos.size()];
+        for (int i = 0; i < videos.size(); i++) names[i] = videos.get(i).name;
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Choose video")
+                .setItems(names, (dialog, which) -> playLocalVideos(videos, which))
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private static final class LocalVideo {
+        final Uri uri;
+        final String name;
+
+        LocalVideo(Uri uri, String name) {
+            this.uri = uri;
+            this.name = name;
+        }
+    }
+
+    private ArrayList<LocalVideo> listLocalVideos(Uri treeUri) {
+        ArrayList<LocalVideo> videos = new ArrayList<>();
+        try {
+            String parentId = DocumentsContract.getTreeDocumentId(treeUri);
+            Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId);
+            String[] projection = {
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE
+            };
+            try (Cursor cursor = getContentResolver().query(children, projection,
+                    null, null, null)) {
+                if (cursor != null) {
+                    while (cursor.moveToNext()) {
+                        String id = cursor.getString(0);
+                        String name = cursor.getString(1);
+                        String mime = cursor.getString(2);
+                        if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)
+                                || !isLocalVideo(name, mime)) continue;
+                        videos.add(new LocalVideo(
+                                DocumentsContract.buildDocumentUriUsingTree(treeUri, id), name));
+                    }
+                }
+            }
+        } catch (RuntimeException error) {
+            LimeLog.warning("Unable to list local video folder: " + error);
+            Toast.makeText(this, "Unable to read this video folder.", Toast.LENGTH_LONG).show();
+        }
+        videos.sort(Comparator.comparing(video -> video.name, String.CASE_INSENSITIVE_ORDER));
+        return videos;
+    }
+
+    private static boolean isLocalVideo(String name, String mime) {
+        if (mime != null && mime.startsWith("video/")) return true;
+        if (name == null) return false;
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        return lower.endsWith(".mp4") || lower.endsWith(".mkv")
+                || lower.endsWith(".webm") || lower.endsWith(".m4v")
+                || lower.endsWith(".mov");
+    }
+
+    private void playLocalVideos(ArrayList<LocalVideo> videos, int selectedIndex) {
+        ArrayList<Uri> uris = new ArrayList<>(videos.size());
+        for (LocalVideo video : videos) uris.add(video.uri);
+        Intent playback = new Intent(this, VideoXrActivity.class);
+        playback.setData(uris.get(selectedIndex));
+        playback.putParcelableArrayListExtra(VideoXrActivity.EXTRA_VIDEO_URIS, uris);
+        playback.putExtra(VideoXrActivity.EXTRA_START_INDEX, selectedIndex);
+        playback.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(playback);
     }
 
     @Override

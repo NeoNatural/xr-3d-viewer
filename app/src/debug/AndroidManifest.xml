@@ -9,6 +9,10 @@
             android:exported="true"
             tools:replace="android:exported" />
         <activity
+            android:name="com.limelight.VideoXrActivity"
+            android:exported="true"
+            tools:replace="android:exported" />
+        <activity
             android:name="com.limelight.smb.SmbBrowserActivity"
             android:exported="true"
             tools:replace="android:exported" />

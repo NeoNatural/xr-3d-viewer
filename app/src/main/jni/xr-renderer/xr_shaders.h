@@ -7,6 +7,7 @@
 
 extern const char* const VERTEX_SRC;
 extern const char* const FRAGMENT_SRC;
+extern const char* const MOTION_FRAGMENT_SRC;
 extern const char* const UPSAMPLE_FRAGMENT_SRC;
 extern const char* const OFFSET_FRAGMENT_SRC;
 extern const char* const DOWNSCALE_FRAGMENT_SRC;

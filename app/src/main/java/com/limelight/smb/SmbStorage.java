@@ -1,5 +1,6 @@
 package com.limelight.smb;
 
+import com.limelight.LimeLog;
 import com.limelight.media.MediaEntry;
 import com.limelight.media.MediaDirectoryOrder;
 import com.limelight.media.MediaStorage;
@@ -24,6 +25,9 @@ import jcifs.smb.SmbRandomAccessFile;
 public final class SmbStorage implements MediaStorage {
     private final String rootUri;
     private final CIFSContext context;
+    private final String domain;
+    private final String username;
+    private final String password;
 
     public SmbStorage(String host, String share, String domain, String username, String password)
             throws IOException {
@@ -31,13 +35,16 @@ public final class SmbStorage implements MediaStorage {
             throw new IllegalArgumentException("Invalid SMB host or share");
         }
         rootUri = "smb://" + host + "/" + share + "/";
+        this.domain = domain;
+        this.username = username;
+        this.password = password;
         Properties properties = new Properties();
-        // The library defaults to a 30 second response timeout. A single lost
-        // multi-credit read then blocks an entire prefetch lane for half a
-        // minute even on a healthy LAN. Smaller SMB reads avoid that credit
-        // failure mode, and a short per-request timeout lets jcifs reconnect
-        // while the second decode lane continues filling the window.
-        properties.setProperty("jcifs.smb.client.useLargeReadWrite", "false");
+        // This NOVA jcifs build supports 1 MiB SMB2/3 multi-credit transfers.
+        // Video must keep large reads enabled; disabling them reduces playback
+        // to a stream of small round trips and cannot sustain normal bitrates.
+        properties.setProperty("jcifs.smb.client.useLargeReadWrite", "true");
+        // Fail a genuinely lost request promptly rather than freezing playback
+        // for jcifs' default thirty seconds.
         properties.setProperty("jcifs.smb.client.responseTimeout", "5000");
         properties.setProperty("jcifs.smb.client.soTimeout", "10000");
         properties.setProperty("jcifs.smb.client.connTimeout", "5000");
@@ -109,6 +116,19 @@ public final class SmbStorage implements MediaStorage {
         }
     }
 
+    /** Native SMB2/3 path used for sustained high-bitrate video reads. */
+    public RandomAccessSource openVideoRandomAccess(String uri) throws IOException {
+        try {
+            RandomAccessSource source = NativeSmbRandomAccess.open(uri, domain, username, password);
+            LimeLog.info("Native libsmb2 video source opened");
+            return source;
+        } catch (IOException error) {
+            LimeLog.warning("Native SMB2 open failed; using jcifs fallback: "
+                    + error.getMessage());
+            return openRandomAccess(uri);
+        }
+    }
+
     private SmbFile file(String uri) throws MalformedURLException {
         if (uri == null || !uri.startsWith(rootUri)) {
             throw new IllegalArgumentException("SMB URI is outside the configured share");
@@ -141,6 +161,7 @@ public final class SmbStorage implements MediaStorage {
         private final SmbFile file;
         private final SmbRandomAccessFile access;
         private final long size;
+        private long position;
 
         SmbAccess(SmbFile file, SmbRandomAccessFile access) throws IOException {
             this.file = file;
@@ -156,8 +177,10 @@ public final class SmbStorage implements MediaStorage {
             if (position < 0) {
                 throw new IllegalArgumentException("Negative SMB file offset");
             }
-            access.seek(position);
-            return access.read(buffer, offset, length);
+            if (this.position != position) access.seek(position);
+            int read = access.read(buffer, offset, length);
+            if (read > 0) this.position = position + read;
+            return read;
         }
 
         @Override

@@ -967,7 +967,8 @@ static void readSources(XrCtx* ctx, InputFrame* f) {
             f->hitU[h] = kbU;
             f->hitV[h] = kbV;
         }
-        else if (ctx->imageNavEnabled && !ctx->pickerOpen && !ctx->cogOpen
+        else if ((ctx->imageNavEnabled || ctx->videoControlsEnabled)
+                && !ctx->pickerOpen && !ctx->cogOpen
                 && !ctx->kbOpen && !ctx->exitConfirmOpen) {
             float navW, navH, navU, navV;
             XrPosef navPose;
@@ -1509,6 +1510,51 @@ static void updateFurniture(XrCtx* ctx, InputFrame* f) {
     ctx->imageNavHover = 0;
     ctx->imageNavPressed = 0;
     if (f->hover == HOVER_IMAGE_NAV) {
+        if (ctx->videoControlsEnabled) {
+            float u = f->hitU[f->hand];
+            int action = 0;
+            int hover = 0;
+            float value = 0.0f;
+            if (u >= VIDEO_PREVIOUS_L && u <= VIDEO_PREVIOUS_R) {
+                action = VIDEO_CONTROL_PREVIOUS;
+                hover = 1;
+            } else if (u >= VIDEO_BACK_L && u <= VIDEO_BACK_R) {
+                action = VIDEO_CONTROL_BACK;
+                hover = 2;
+            } else if (u >= VIDEO_TOGGLE_L && u <= VIDEO_TOGGLE_R) {
+                action = VIDEO_CONTROL_TOGGLE;
+                hover = 3;
+            } else if (u >= VIDEO_FORWARD_L && u <= VIDEO_FORWARD_R) {
+                action = VIDEO_CONTROL_FORWARD;
+                hover = 4;
+            } else if (u >= VIDEO_NEXT_L && u <= VIDEO_NEXT_R) {
+                action = VIDEO_CONTROL_NEXT;
+                hover = 5;
+            } else if (u >= VIDEO_TRACK_L && u <= VIDEO_TRACK_R) {
+                action = VIDEO_CONTROL_SEEK;
+                value = (u - VIDEO_TRACK_L) / (VIDEO_TRACK_R - VIDEO_TRACK_L);
+            }
+            ctx->imageNavHover = hover;
+            if (ctx->triggerDown[f->hand]) ctx->imageNavPressed = hover;
+            if (ctx->triggerEdge[f->hand] && action != 0) {
+                f->out[IN_VIDEO_CONTROL] = (float)action;
+                f->out[IN_VIDEO_VALUE] = value;
+                if (f->hand < HAND_COUNT && !ctx->usingHands[f->hand]
+                        && ctx->hapticAction != XR_NULL_HANDLE) {
+                    XrHapticActionInfo info = { XR_TYPE_HAPTIC_ACTION_INFO };
+                    info.action = ctx->hapticAction;
+                    info.subactionPath = ctx->handPaths[f->hand];
+                    XrHapticVibration pulse = { XR_TYPE_HAPTIC_VIBRATION };
+                    pulse.duration = 25000000;
+                    pulse.frequency = XR_FREQUENCY_UNSPECIFIED;
+                    pulse.amplitude = 0.6f;
+                    xrApplyHapticFeedback(ctx->session, &info,
+                                          (const XrHapticBaseHeader*)&pulse);
+                }
+                swallowTrigger(ctx, f->hand);
+            }
+            return;
+        }
         int side = f->hitU[f->hand] < 0.5f ? 1 : 2;
         ctx->imageNavHover = side;
         if (ctx->triggerDown[f->hand]) ctx->imageNavPressed = side;
@@ -1903,7 +1949,7 @@ Java_com_limelight_binding_video_XrRenderer_nativeUpdateInput(JNIEnv* env, jobje
     // and flattens it whatever the preference and the panel say.
     f.roomOn = roomEffective(ctx) > 0;
     f.space = (headLocked && !f.roomOn) ? ctx->viewSpace : ctx->localSpace;
-    f.height = ctx->screenWidth * (float)ctx->videoHeight / (float)ctx->videoWidth;
+    f.height = ctx->screenWidth * ctx->videoDisplayAspect;
     f.curved = !f.roomOn && effectiveCurvature(ctx) > 0.01f && ctx->cylinderSupported;
     f.radius = ctx->screenRadius;
     f.screenPose = ctx->screenPose;
@@ -1951,7 +1997,7 @@ Java_com_limelight_binding_video_XrRenderer_nativeUpdateInput(JNIEnv* env, jobje
               f.height, f.curved);
     applyGrabStick(ctx, f.aimPoses, f.dt, f.headValid);
     f.screenPose = ctx->screenPose;
-    f.height = ctx->screenWidth * (float)ctx->videoHeight / (float)ctx->videoWidth;
+    f.height = ctx->screenWidth * ctx->videoDisplayAspect;
     f.radius = ctx->screenRadius;
 
     // A handle stays lit while it is being dragged, however far the ray has

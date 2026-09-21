@@ -70,8 +70,58 @@ static void testLowPass(void) {
     free(colSums);
 }
 
+static void testMotionAdaptiveDepthAlpha(void) {
+    // Ordinary model noise keeps the configured smoothing.
+    CHECK_NEAR(motionAdaptiveDepthAlpha(0.6f, 0.0f), 0.6f, 1e-6);
+    CHECK_NEAR(motionAdaptiveDepthAlpha(0.6f, 0.03f), 0.6f, 1e-6);
+
+    // A mid-sized change is only partly released, while a new surface is
+    // accepted without retaining a ghost of the old edge.
+    CHECK_NEAR(motionAdaptiveDepthAlpha(0.6f, 0.10f), 0.8f, 1e-6);
+    CHECK_NEAR(motionAdaptiveDepthAlpha(0.6f, 0.16f), 1.0f, 1e-6);
+    CHECK_NEAR(motionAdaptiveDepthAlpha(0.6f, -0.20f), 1.0f, 1e-6);
+}
+
+static void testDepthMotionGrid(void) {
+    enum { SIZE = 32, GRID = 8 };
+    float previous[SIZE * SIZE];
+    float current[SIZE * SIZE];
+    float dx[GRID * GRID], dy[GRID * GRID], confidence[GRID * GRID];
+    for (int y = 0; y < SIZE; y++) {
+        for (int x = 0; x < SIZE; x++) {
+            // Non-periodic texture with structure in both axes.
+            previous[y * SIZE + x] = ((x * 17 + y * 29 + x * y * 3) % 251) / 250.0f;
+        }
+    }
+    // Current pixel (x,y) came from previous (x+2,y+1).
+    for (int y = 0; y < SIZE; y++) {
+        for (int x = 0; x < SIZE; x++) {
+            int px = x + 2 < SIZE ? x + 2 : SIZE - 1;
+            int py = y + 1 < SIZE ? y + 1 : SIZE - 1;
+            current[y * SIZE + x] = previous[py * SIZE + px];
+        }
+    }
+    float mean = estimateDepthMotionGrid(current, previous, SIZE, dx, dy, confidence,
+                                         GRID, 3);
+    CHECK(mean > 0.7f);
+    // Use an interior cell so the expected match is not clipped by a border.
+    int center = 3 * GRID + 3;
+    CHECK_NEAR(dx[center], 2.0f, 1e-6);
+    CHECK_NEAR(dy[center], 1.0f, 1e-6);
+    CHECK(confidence[center] > 0.9f);
+
+    // An identical flat image must resolve to zero motion, not an arbitrary
+    // search corner.
+    for (int i = 0; i < SIZE * SIZE; i++) previous[i] = current[i] = 0.4f;
+    estimateDepthMotionGrid(current, previous, SIZE, dx, dy, confidence, GRID, 3);
+    CHECK_NEAR(dx[center], 0.0f, 1e-6);
+    CHECK_NEAR(dy[center], 0.0f, 1e-6);
+}
+
 int main(void) {
     testRobustRange();
     testLowPass();
+    testMotionAdaptiveDepthAlpha();
+    testDepthMotionGrid();
     return checksDone("xr_depthmap");
 }

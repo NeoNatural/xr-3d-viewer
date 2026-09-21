@@ -68,7 +68,37 @@
 // here, so a zeroed slot says nothing happened.
 #define IN_EXIT     21
 #define IN_IMAGE_NAV 22
-#define IN_SLOTS    23
+#define IN_VIDEO_CONTROL 23
+#define IN_VIDEO_VALUE 24
+#define IN_SLOTS    25
+
+// Optional media strip below the screen. Image navigation and video playback
+// share one compositor layer and hit-test plane, but never appear together.
+#define MEDIA_CONTROLS_NONE 0
+#define MEDIA_CONTROLS_IMAGES 1
+#define MEDIA_CONTROLS_VIDEO 2
+
+// Commands emitted by the video control strip.
+#define VIDEO_CONTROL_BACK 1
+#define VIDEO_CONTROL_TOGGLE 2
+#define VIDEO_CONTROL_FORWARD 3
+#define VIDEO_CONTROL_SEEK 4
+#define VIDEO_CONTROL_PREVIOUS 5
+#define VIDEO_CONTROL_NEXT 6
+
+// Horizontal hit zones in the video control texture.
+#define VIDEO_PREVIOUS_L 0.015f
+#define VIDEO_PREVIOUS_R 0.105f
+#define VIDEO_BACK_L 0.115f
+#define VIDEO_BACK_R 0.205f
+#define VIDEO_TOGGLE_L 0.215f
+#define VIDEO_TOGGLE_R 0.305f
+#define VIDEO_TRACK_L 0.335f
+#define VIDEO_TRACK_R 0.775f
+#define VIDEO_FORWARD_L 0.805f
+#define VIDEO_FORWARD_R 0.895f
+#define VIDEO_NEXT_L 0.905f
+#define VIDEO_NEXT_R 0.995f
 
 // Settings the panel can hand back to Java to be applied and stored
 #define SETTING_SHARPEN 0

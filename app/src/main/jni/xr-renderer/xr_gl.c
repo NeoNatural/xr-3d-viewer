@@ -125,6 +125,36 @@ int linkProgram(GLuint* out, const char* fragmentSrc, const char* what) {
 static int initUpsample(XrCtx* ctx) {
     ctx->upsampleWidth = ctx->videoWidth / 4;
     ctx->upsampleHeight = ctx->videoHeight / 4;
+    ctx->motionWidth = 64;
+    ctx->motionHeight = 64;
+
+    if (!linkProgram(&ctx->motionProgram, MOTION_FRAGMENT_SRC, "depth motion")) {
+        return 0;
+    }
+    ctx->motionTexMatrixUniform = glGetUniformLocation(ctx->motionProgram, "u_texmatrix");
+    glUseProgram(ctx->motionProgram);
+    glUniform1i(glGetUniformLocation(ctx->motionProgram, "u_texture"), 0);
+    glUniform1i(glGetUniformLocation(ctx->motionProgram, "u_depth"), 1);
+
+    glGenTextures(1, &ctx->motionTexture);
+    glBindTexture(GL_TEXTURE_2D, ctx->motionTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, ctx->motionWidth, ctx->motionHeight, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glGenFramebuffers(1, &ctx->motionFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, ctx->motionFbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                           ctx->motionTexture, 0);
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        LOGE("depth motion framebuffer incomplete: 0x%x", status);
+        return 0;
+    }
 
     if (!linkProgram(&ctx->upsampleProgram, UPSAMPLE_FRAGMENT_SRC, "upsample")) {
         return 0;
@@ -135,6 +165,7 @@ static int initUpsample(XrCtx* ctx) {
     glUseProgram(ctx->upsampleProgram);
     glUniform1i(glGetUniformLocation(ctx->upsampleProgram, "u_texture"), 0);
     glUniform1i(glGetUniformLocation(ctx->upsampleProgram, "u_depth"), 1);
+    glUniform1i(glGetUniformLocation(ctx->upsampleProgram, "u_motion"), 2);
 
     glGenTextures(1, &ctx->upsampleTexture);
     glBindTexture(GL_TEXTURE_2D, ctx->upsampleTexture);
@@ -149,7 +180,7 @@ static int initUpsample(XrCtx* ctx) {
     glBindFramebuffer(GL_FRAMEBUFFER, ctx->upsampleFbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
                            ctx->upsampleTexture, 0);
-    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     if (status != GL_FRAMEBUFFER_COMPLETE) {
         LOGE("upsample framebuffer incomplete: 0x%x", status);
@@ -187,6 +218,27 @@ static int initUpsample(XrCtx* ctx) {
     LOGI("depth upsample and offset search ready at %dx%d",
          ctx->upsampleWidth, ctx->upsampleHeight);
     return 1;
+}
+
+static void runDepthMotion(XrCtx* ctx, const float* texMatrix) {
+    glBindFramebuffer(GL_FRAMEBUFFER, ctx->motionFbo);
+    glViewport(0, 0, ctx->motionWidth, ctx->motionHeight);
+    if (ctx->srgbWriteControl) {
+        glDisable(GL_FRAMEBUFFER_SRGB_EXT);
+    }
+    glUseProgram(ctx->motionProgram);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_EXTERNAL_OES, ctx->oesTexture);
+    glActiveTexture(GL_TEXTURE1);
+    waitForDepthSlot(ctx);
+    glBindTexture(GL_TEXTURE_2D, ctx->depthTextures[ctx->depthReadIndex]);
+    glUniformMatrix4fv(ctx->motionTexMatrixUniform, 1, GL_FALSE, texMatrix);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, VERTEX_DATA);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, VERTEX_DATA + 2);
+    glEnableVertexAttribArray(1);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 int initGl(XrCtx* ctx) {
@@ -305,6 +357,8 @@ static void runUpsample(XrCtx* ctx, const float* texMatrix) {
     glActiveTexture(GL_TEXTURE1);
     waitForDepthSlot(ctx);
     glBindTexture(GL_TEXTURE_2D, ctx->depthTextures[ctx->depthReadIndex]);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, ctx->motionTexture);
     glUniformMatrix4fv(ctx->upsampleTexMatrixUniform, 1, GL_FALSE, texMatrix);
     glUniform1f(ctx->upsampleSigmaUniform, ctx->upsampleSigmaR);
     glUniform1f(ctx->upsampleSharpUniform, ctx->depthSharp);
@@ -369,6 +423,7 @@ void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation) {
     }
 
     if (upsampling) {
+        runDepthMotion(ctx, texMatrix);
         runUpsample(ctx, texMatrix);
     }
     if (occluding) {

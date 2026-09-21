@@ -87,12 +87,19 @@
         style="?android:attr/borderlessButtonStyle"/>
 
     <Button
-        android:id="@+id/testStaticImage"
+        android:id="@+id/openLocalVideo"
         android:layout_width="wrap_content"
         android:layout_height="65dp"
         android:layout_alignParentTop="true"
         android:layout_toEndOf="@id/helpButton"
-        android:layout_toStartOf="@id/manuallyAddPc"
+        android:text="@string/open_local_video" />
+
+    <Button
+        android:id="@+id/testStaticImage"
+        android:layout_width="wrap_content"
+        android:layout_height="65dp"
+        android:layout_alignParentTop="true"
+        android:layout_toEndOf="@id/openLocalVideo"
         android:text="@string/test_static_image" />
 
     <Button

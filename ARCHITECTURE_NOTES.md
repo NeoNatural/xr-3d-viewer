@@ -1,6 +1,6 @@
-# Moonlight XR baseline notes
+# XR media viewer architecture notes
 
-This is the native Android/OpenXR base specified by `../quest3_2d_to_3d_media_browser_codex_plan.md`. It is not a Unity project. Keep its existing decoder, depth, and stereo paths intact for the first baseline build.
+This is now a standalone native Android/OpenXR photo and video viewer. The runtime home screen has local and SMB media browsers; GameStream host discovery, pairing, app launching, stream activities/services, stream settings, and the native Moonlight transport library are no longer registered or packaged. The older sections below are retained as implementation history.
 
 Unity 6.3 is supported for separate Quest Unity projects, but `com.unity.pipeline` is a Unity Editor package. Do not install it into this Gradle repository or migrate the Moonlight XR renderer to Unity to gain agent access. For this project, the agent build loop is Gradle + ADB + source inspection.
 
@@ -28,9 +28,9 @@ Unity 6.3 is supported for separate Quest Unity projects, but `com.unity.pipelin
 
 For local video, feed Media3's decoder into the `Surface` exposed by `XrRenderer`; first verify the decoder lifecycle does not assume a Moonlight stream. For a static image, inspect the OES sampling and capture path in `xr_gl.c`/`xr_depth.c` before choosing a 2D texture or common FBO path. Do not upload textures from the Android UI thread.
 
-## Static image probe
+## Static image path
 
-`StaticImageXrActivity` is the first standalone image source. The home screen's **Test 3D Image** button launches an immersive activity without Moonlight or Sunshine. A worker decodes the APK's existing `environments/spaichingen_hill.jpg`, draws it at 1280×720 into `XrRenderer.getInputSurface()`, and repeats the same image at 5 Hz so the asynchronous depth worker can capture it after model warmup. The image enters the same external OES texture, depth capture, MiDaS GPU inference, and stereo warp as decoder video. Only the debug manifest exports this activity for direct ADB launch.
+`StaticImageXrActivity` is the standalone image source used by both local and SMB browsing. The former home-screen **Test 3D Image** probe and bundled-asset fallback have been removed. Images enter the same external OES texture, depth capture, depth inference, and stereo warp as decoded video. Only the debug manifest exports this activity for direct ADB launch.
 
 On Quest 3, `adb shell am start -n com.gilleece.moonlightxr.debug/com.limelight.StaticImageXrActivity` starts the probe. Device logs confirmed OpenXR initialization, static source startup, and MiDaS GPU warmup at 18.6 ms average over ten inferences. The user visually confirmed some stereo depth in the landscape image. Sustained frame timing still needs measurement during an active headset session.
 

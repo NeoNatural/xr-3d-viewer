@@ -9,6 +9,7 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Debug;
+import android.net.Uri;
 import android.view.Surface;
 import android.view.View;
 import android.view.Window;
@@ -26,8 +27,6 @@ import com.limelight.media.MediaEntry;
 import java.io.IOException;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -50,11 +49,11 @@ import java.util.List;
 
 /** A local image probe for the existing XR depth and stereo pipeline. */
 public class StaticImageXrActivity extends Activity implements XrRenderer.InputListener {
-    public static final String EXTRA_TEST_IMAGE_NAME = "testImageName";
     public static final String EXTRA_SMB_URI = "smbUri";
     public static final String EXTRA_SMB_DIRECTORY = "smbDirectory";
     public static final String EXTRA_OPEN_STARTED_NS = "openStartedNs";
-    private static final String IMAGE_ASSET = "environments/spaichingen_hill.jpg";
+    public static final String EXTRA_LOCAL_IMAGE_URIS = "localImageUris";
+    public static final String EXTRA_LOCAL_START_INDEX = "localStartIndex";
     // Image-only render target. The former 1280x720 Surface discarded detail
     // from high-resolution artwork before it reached the per-eye XR swapchain.
     private static final int FRAME_WIDTH = 2048;
@@ -110,22 +109,43 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
         LimeLog.info("Static XR open requested at " + startedNs);
         String smbUri = getIntent().getStringExtra(EXTRA_SMB_URI);
         String directoryUri = getIntent().getStringExtra(EXTRA_SMB_DIRECTORY);
-        imageQueue = SmbClientManager.imageSnapshot(directoryUri);
-        int currentIndex = -1;
-        for (int i = 0; i < imageQueue.size(); i++) {
-            if (imageQueue.get(i).uri.equals(smbUri)) {
-                currentIndex = i;
-                break;
+        ArrayList<Uri> localUris = getIntent().getParcelableArrayListExtra(
+                EXTRA_LOCAL_IMAGE_URIS);
+        int currentIndex;
+        String sourceUri;
+        if (localUris != null && !localUris.isEmpty()) {
+            ArrayList<MediaEntry> localEntries = new ArrayList<>(localUris.size());
+            for (Uri uri : localUris) {
+                String name = uri.getLastPathSegment();
+                localEntries.add(new MediaEntry(uri.toString(), name == null ? "Image" : name,
+                        false, 0, 0));
             }
+            imageQueue = localEntries;
+            currentIndex = Math.max(0, Math.min(localEntries.size() - 1,
+                    getIntent().getIntExtra(EXTRA_LOCAL_START_INDEX, 0)));
+            sourceUri = imageQueue.get(currentIndex).uri;
+        } else {
+            imageQueue = SmbClientManager.imageSnapshot(directoryUri);
+            currentIndex = -1;
+            for (int i = 0; i < imageQueue.size(); i++) {
+                if (imageQueue.get(i).uri.equals(smbUri)) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+            sourceUri = smbUri;
         }
-        String requestedName = getIntent().getStringExtra(EXTRA_TEST_IMAGE_NAME);
-        String sourceLabel = smbUri != null ? smbUri
-                : requestedName == null ? IMAGE_ASSET : requestedName;
+        if (sourceUri == null) {
+            LimeLog.severe("Static XR launched without a media URI");
+            runOnUiThread(this::finish);
+            return;
+        }
+        String sourceLabel = sourceUri;
         ExecutorService prefetch = Executors.newFixedThreadPool(2);
         StillImageDepthBatcher batcher = StillImageDepthBatcher.shared(this);
         ExecutorService depthWorker = batcher.worker();
         FutureTask<PreparedImage> decode = new FutureTask<>(
-                () -> prepareImage(smbUri, requestedName));
+                () -> prepareImage(sourceUri));
         prefetch.execute(decode);
         Map<Integer, FutureTask<PreparedImage>> nearby = new HashMap<>();
         Set<FutureTask<PreparedImage>> depthScheduled =
@@ -194,7 +214,7 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
             Bitmap bitmap = current.bitmap;
             Rect source = new Rect(0, 0, bitmap.getWidth(), bitmap.getHeight());
             nearby.remove(currentIndex);
-            if (currentIndex >= 0) {
+            if (currentIndex >= 0 && directoryUri != null) {
                 SmbBrowseHistory.record(this, directoryUri, imageQueue.get(currentIndex).name);
             }
             LimeLog.info("Static XR image source running: " + sourceLabel);
@@ -226,8 +246,10 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
                             } else {
                                 retirePrepared(previous);
                             }
-                            SmbBrowseHistory.record(this, directoryUri,
-                                    imageQueue.get(currentIndex).name);
+                            if (directoryUri != null) {
+                                SmbBrowseHistory.record(this, directoryUri,
+                                        imageQueue.get(currentIndex).name);
+                            }
                             long requestMs = navigationRequestedNs == 0 ? -1
                                     : (System.nanoTime() - navigationRequestedNs) / 1000000;
                             LimeLog.info("Static XR navigated to "
@@ -367,7 +389,7 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
         FutureTask<PreparedImage> task = nearby.get(index);
         if (task != null) return task;
         String uri = imageQueue.get(index).uri;
-        task = new FutureTask<>(() -> prepareImage(uri, null));
+        task = new FutureTask<>(() -> prepareImage(uri));
         nearby.put(index, task);
         executor.execute(task);
         return task;
@@ -539,9 +561,9 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
         } else task.cancel(true);
     }
 
-    private PreparedImage prepareImage(String smbUri, String requestedName) throws IOException {
+    private PreparedImage prepareImage(String sourceUri) throws IOException {
         long start = System.nanoTime();
-        Bitmap bitmap = decodeImage(smbUri, requestedName);
+        Bitmap bitmap = decodeImage(sourceUri);
         if (bitmap == null) throw new IOException("Image decode returned null");
         try {
             checkDecodeCancelled();
@@ -587,12 +609,13 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
         return rgb;
     }
 
-    private Bitmap decodeImage(String smbUri, String requestedName) throws IOException {
+    private Bitmap decodeImage(String sourceUri) throws IOException {
+        boolean smb = sourceUri != null && sourceUri.startsWith("smb://");
         byte[] cached = null;
         MediaEntry smbEntry = null;
-        if (smbUri != null) {
+        if (smb) {
             for (MediaEntry entry : imageQueue) {
-                if (entry.uri.equals(smbUri)) {
+                if (entry.uri.equals(sourceUri)) {
                     smbEntry = entry;
                     cached = SmbImageByteCache.get(entry);
                     break;
@@ -600,12 +623,12 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
             }
         }
         if (cached != null) LimeLog.info("Static XR reused " + cached.length + " SMB bytes from thumbnail");
-        if (cached == null && smbUri != null) {
+        if (cached == null && smb) {
             long readStart = System.nanoTime();
             LimeLog.info("Static XR SMB read started "
                     + (smbEntry == null ? "unknown" : smbEntry.name) + ", expected "
                     + (smbEntry == null ? -1 : smbEntry.size) + " bytes");
-            try (InputStream source = openImage(smbUri, requestedName);
+            try (InputStream source = openImage(sourceUri);
                  ByteArrayOutputStream output = new ByteArrayOutputStream(4 * 1024 * 1024)) {
                 byte[] block = new byte[128 * 1024];
                 int count;
@@ -619,7 +642,7 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
                     + (System.nanoTime() - readStart) / 1000000 + " ms");
         }
         try (InputStream stream = cached != null ? new ByteArrayInputStream(cached)
-                : openImage(smbUri, requestedName)) {
+                : openImage(sourceUri)) {
             BitmapFactory.Options bounds = new BitmapFactory.Options();
             bounds.inJustDecodeBounds = true;
             BitmapFactory.decodeStream(stream, null, bounds);
@@ -636,7 +659,7 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
             options.inSampleSize = sample;
             options.inPreferredConfig = Bitmap.Config.ARGB_8888;
             try (InputStream pixels = cached != null ? new ByteArrayInputStream(cached)
-                    : openImage(smbUri, requestedName)) {
+                    : openImage(sourceUri)) {
                 Bitmap decoded = BitmapFactory.decodeStream(pixels, null, options);
                 if (decoded == null) return null;
                 if (decoded.getWidth() <= targetWidth && decoded.getHeight() <= targetHeight) {
@@ -649,26 +672,17 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
         }
     }
 
-    private InputStream openImage(String smbUri, String requestedName) throws IOException {
-        if (smbUri != null) {
+    private InputStream openImage(String sourceUri) throws IOException {
+        if (sourceUri.startsWith("smb://")) {
             SmbStorage storage = SmbClientManager.active();
             if (storage == null) {
                 throw new IOException("SMB session is no longer active");
             }
-            return storage.openInputStream(smbUri);
+            return storage.openInputStream(sourceUri);
         }
-        if (requestedName == null) {
-            return getAssets().open(IMAGE_ASSET);
-        }
-        if (!requestedName.matches("[A-Za-z0-9._-]+") || requestedName.equals(".")
-                || requestedName.equals("..")) {
-            throw new IOException("Invalid test image name");
-        }
-        File directory = getExternalFilesDir("test_media");
-        if (directory == null) {
-            throw new IOException("Test media directory unavailable");
-        }
-        return new FileInputStream(new File(directory, requestedName));
+        InputStream stream = getContentResolver().openInputStream(Uri.parse(sourceUri));
+        if (stream == null) throw new IOException("Unable to open local image");
+        return stream;
     }
 
     private static Rect fitRect(int imageWidth, int imageHeight, int canvasWidth, int canvasHeight) {

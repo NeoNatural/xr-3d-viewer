@@ -772,16 +772,10 @@ public class PreferenceConfiguration {
             config.bitrate = getDefaultBitrate(context);
         }
 
-        String audioConfig = prefs.getString(AUDIO_CONFIG_PREF_STRING, DEFAULT_AUDIO_CONFIG);
-        if (audioConfig.equals("71")) {
-            config.audioConfiguration = MoonBridge.AUDIO_CONFIGURATION_71_SURROUND;
-        }
-        else if (audioConfig.equals("51")) {
-            config.audioConfiguration = MoonBridge.AUDIO_CONFIGURATION_51_SURROUND;
-        }
-        else /* if (audioConfig.equals("2")) */ {
-            config.audioConfiguration = MoonBridge.AUDIO_CONFIGURATION_STEREO;
-        }
+        // Standalone media audio is owned by ExoPlayer. Do not initialize the
+        // legacy MoonBridge class here: its native streaming core is no longer
+        // part of the APK.
+        config.audioConfiguration = null;
 
         config.videoFormat = getVideoFormatValue(context);
         config.framePacing = getFramePacingValue(context);

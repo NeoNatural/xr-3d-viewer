@@ -3,7 +3,7 @@
     <!-- Quest 3 meets ORT's API 24 requirement; the legacy app minSdk remains 21. -->
     <uses-sdk tools:overrideLibrary="ai.onnxruntime" />
     <application>
-        <!-- The built-in image probe is exported only in debug APKs for ADB launch. -->
+        <!-- Media activities are exported only in debug APKs for ADB launch. -->
         <activity
             android:name="com.limelight.StaticImageXrActivity"
             android:exported="true"
@@ -16,8 +16,5 @@
             android:name="com.limelight.smb.SmbBrowserActivity"
             android:exported="true"
             tools:replace="android:exported" />
-        <activity
-            android:name="com.limelight.DepthV2BenchmarkActivity"
-            android:exported="true" />
     </application>
 </manifest>

@@ -85,7 +85,9 @@ jobs:
           mkdir -p dist
           output="dist/xr-3d-viewer-${GITHUB_REF_NAME}.apk"
           cp "$apk" "$output"
-          sha256sum "$output" > "${output}.sha256"
+          # Keep only the APK basename in the checksum file so users can run
+          # `sha256sum -c` after downloading the two release assets together.
+          (cd dist && sha256sum "$(basename "$output")" > "$(basename "$output").sha256")
           cp LICENSE.txt THIRD_PARTY_NOTICES.md dist/
 
       - name: Release

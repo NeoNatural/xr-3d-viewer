@@ -4,6 +4,8 @@
 
 # XR 3D Viewer
 
+**English** | [简体中文](README.zh-CN.md)
+
 An open-source Android/OpenXR media viewer that turns ordinary 2D photos and
 videos into stereoscopic 3D on a standalone headset. Media can be opened from
 local storage or streamed directly from an SMB/NAS share; no desktop companion,

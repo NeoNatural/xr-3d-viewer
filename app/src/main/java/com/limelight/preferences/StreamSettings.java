@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.preference.PreferenceFragment;
 
 import com.limelight.BugReportActivity;
+import com.limelight.LegalNoticesActivity;
 import com.limelight.R;
 import com.limelight.utils.UiHelper;
 
@@ -30,6 +31,10 @@ public final class StreamSettings extends Activity {
             addPreferencesFromResource(R.xml.preferences);
             findPreference("pref_bug_report").setOnPreferenceClickListener(preference -> {
                 startActivity(new Intent(getActivity(), BugReportActivity.class));
+                return true;
+            });
+            findPreference("pref_legal_notices").setOnPreferenceClickListener(preference -> {
+                startActivity(new Intent(getActivity(), LegalNoticesActivity.class));
                 return true;
             });
         }

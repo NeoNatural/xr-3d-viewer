@@ -94,10 +94,9 @@ public final class LocalBrowserActivity extends Activity {
         if (requestCode != PICK_TREE || resultCode != RESULT_OK || data == null
                 || data.getData() == null) return;
         Uri selected = data.getData();
-        int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION
-                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
         try {
-            getContentResolver().takePersistableUriPermission(selected, flags);
+            getContentResolver().takePersistableUriPermission(selected,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION);
         } catch (SecurityException ignored) { }
         getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                 .putString(LAST_TREE, selected.toString()).apply();

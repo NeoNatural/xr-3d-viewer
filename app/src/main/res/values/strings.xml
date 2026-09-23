@@ -375,6 +375,10 @@
     <string name="browse_local_media">Browse local photos and videos</string>
     <string name="browse_smb_media">Browse SMB photos and videos</string>
     <string name="media_settings">Media playback settings</string>
+    <string name="category_about">About</string>
+    <string name="title_legal_notices">Open-source licenses</string>
+    <string name="summary_legal_notices">License, warranty, source code, and third-party notices</string>
+    <string name="legal_notices_unavailable">The bundled legal notices could not be opened: %1$s</string>
     <string name="choose_local_folder">Choose local media folder</string>
     <string name="local_folder_empty">No supported photos or videos in this folder.</string>
     <string name="open_local_video">Open Video</string>

@@ -6,9 +6,8 @@ on:
     tags: ['v*']
   pull_request:
 
-# A tag build signs the release APK with the keystore held in the repository
-# secrets. Without them it still builds and publishes the unsigned APK, which
-# has to be signed by hand the way the README describes.
+# Tag builds must have the repository signing secrets. Untagged CI may still
+# build an unsigned release APK for validation, but it can never publish one.
 env:
   KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
   KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -43,9 +42,13 @@ jobs:
         run: make -C app/src/test/cpp test
 
       - name: Signing key
-        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 != ''
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "A tagged release requires KEYSTORE_BASE64 and KEYSTORE_PASSWORD secrets." >&2
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > release.keystore
           cat > keystore.properties <<EOF
           storeFile=release.keystore
           storePassword=$KEYSTORE_PASSWORD
@@ -69,9 +72,25 @@ jobs:
           path: app/build/reports/lint-results-nonRootRelease.html
           if-no-files-found: ignore
 
+      - name: Verify and stage release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          apk="app/build/outputs/apk/nonRoot/release/app-nonRoot-release.apk"
+          if [ ! -f "$apk" ]; then
+            echo "Signed release APK was not produced." >&2
+            exit 1
+          fi
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$build_tools/apksigner" verify --verbose --print-certs "$apk"
+          mkdir -p dist
+          output="dist/xr-3d-viewer-${GITHUB_REF_NAME}.apk"
+          cp "$apk" "$output"
+          sha256sum "$output" > "${output}.sha256"
+          cp LICENSE.txt THIRD_PARTY_NOTICES.md dist/
+
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/nonRoot/release/*.apk
+          files: dist/*
           generate_release_notes: true

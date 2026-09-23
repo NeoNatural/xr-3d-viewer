@@ -79,4 +79,11 @@
             android:title="@string/title_bug_report"
             android:summary="@string/summary_bug_report" />
     </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/category_about">
+        <Preference
+            android:key="pref_legal_notices"
+            android:title="@string/title_legal_notices"
+            android:summary="@string/summary_legal_notices" />
+    </PreferenceCategory>
 </PreferenceScreen>

@@ -25,6 +25,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.CAPTURE_KEYBOARD" />
 
     <uses-feature
@@ -139,6 +140,13 @@
             android:label="Media Settings">
             <meta-data android:name="WindowManagerPreference:FreeformWindowSize" android:value="system-default" />
             <meta-data android:name="WindowManagerPreference:FreeformWindowOrientation" android:value="landscape" />
+            <meta-data android:name="pvr.app.type" android:value="2d" />
+        </activity>
+        <activity
+            android:name=".LegalNoticesActivity"
+            android:exported="false"
+            android:label="@string/title_legal_notices"
+            android:resizeableActivity="true">
             <meta-data android:name="pvr.app.type" android:value="2d" />
         </activity>
         <activity

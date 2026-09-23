@@ -30,12 +30,18 @@ fi
 
 (cd "$build_dir" && ./gradlew --no-daemon "${tasks[@]}")
 
+output_dir="$repo_dir/build/agent-apks"
 for task in "${tasks[@]}"; do
-  if [[ "$task" == assembleNonRootDebug ]]; then
-    output_dir="$repo_dir/build/agent-apks"
-    mkdir -p "$output_dir"
-    cp "$build_dir"/app/build/outputs/apk/nonRoot/debug/*.apk "$output_dir/"
-    echo "APK: $output_dir"
-    break
-  fi
+  case "$task" in
+    assembleNonRootDebug)
+      mkdir -p "$output_dir"
+      cp "$build_dir"/app/build/outputs/apk/nonRoot/debug/*.apk "$output_dir/"
+      echo "Debug APK: $output_dir"
+      ;;
+    assembleNonRootRelease)
+      mkdir -p "$output_dir"
+      cp "$build_dir"/app/build/outputs/apk/nonRoot/release/*.apk "$output_dir/"
+      echo "Release APK: $output_dir"
+      ;;
+  esac
 done

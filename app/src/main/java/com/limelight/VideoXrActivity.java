@@ -13,12 +13,14 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Toast;
 
+import androidx.annotation.OptIn;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.VideoSize;
+import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.source.MediaSource;
@@ -34,6 +36,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** Plays a local video through the existing OpenXR depth and stereo renderer. */
+@OptIn(markerClass = UnstableApi.class)
 public final class VideoXrActivity extends Activity implements XrRenderer.InputListener {
     public static final String EXTRA_VIDEO_URIS = "videoUris";
     public static final String EXTRA_SMB_VIDEO_URIS = "smbVideoUris";

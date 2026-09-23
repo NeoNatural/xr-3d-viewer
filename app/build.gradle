@@ -110,11 +110,13 @@ android {
     namespace 'com.limelight'
 
     defaultConfig {
-        minSdk 21
+        // The media-first app uses Android Keystore AES-GCM and
+        // MediaDataSource for SMB profiles and thumbnails.
+        minSdk 23
         targetSdk 36
 
-        versionName "12.1-xr0.3"
-        versionCode = 31403
+        versionName "12.1-xr0.4"
+        versionCode = 31404
 
         // Generate native debug symbols to allow Google Play to symbolicate our native crashes
         ndk.debugSymbolLevel = 'FULL'
@@ -256,10 +258,29 @@ android {
     }
 }
 
+// Put the project and third-party license texts in every APK. The repository
+// keeps one canonical copy of each notice while the generated assets make the
+// same information available offline from the app's Legal notices screen.
+def syncLegalAssets = tasks.register('syncLegalAssets', Sync) {
+    from(rootProject.file('THIRD_PARTY_NOTICES.md'))
+    from(rootProject.file('LICENSE.txt')) {
+        rename { 'GPL-3.0.txt' }
+    }
+    from('src/main/jni/libsmb2/vendor/COPYING')
+    from('src/main/jni/libsmb2/vendor/LICENCE-LGPL-2.1.txt')
+    into(layout.buildDirectory.dir('generated/legal-assets/legal'))
+}
+
+android.sourceSets.main.assets.srcDir(
+        layout.buildDirectory.dir('generated/legal-assets').get().asFile)
+tasks.named('preBuild').configure {
+    dependsOn(syncLegalAssets)
+}
+
 dependencies {
     // Local/remote file playback. Video frames are decoded by MediaCodec directly
     // into XrRenderer's Surface; they are never copied through a CPU Bitmap.
-    // 1.9+ requires API 23. Keep the app's existing API 21 compatibility.
+    // 1.8.1 keeps the current player behavior while the app targets API 23+.
     implementation 'androidx.media3:media3-exoplayer:1.8.1'
     // NOVA's multi-credit jcifs-ng fork is the first direct SMB backend.
     implementation('com.github.nova-video-player:jcifs-ng:v2.1.10-multicredit3') {

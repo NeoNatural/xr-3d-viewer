@@ -2,7 +2,9 @@ package com.limelight.smb;
 
 import android.net.Uri;
 
+import androidx.annotation.OptIn;
 import androidx.media3.common.C;
+import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.BaseDataSource;
 import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DataSpec;
@@ -14,6 +16,7 @@ import java.io.EOFException;
 import java.io.IOException;
 
 /** Media3 byte source backed by an SMB random-access handle. */
+@OptIn(markerClass = UnstableApi.class)
 public final class SmbDataSource extends BaseDataSource {
     private static final int READ_AHEAD_BYTES = 1024 * 1024;
     private static final int PROBE_READ_BYTES = 128 * 1024;

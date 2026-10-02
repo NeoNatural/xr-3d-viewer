@@ -104,18 +104,18 @@ ffmpeg -hide_banner -loglevel error -ss 20 -i ../Video/*.mp4 -t 3 \
 ./tools/build-local.sh
 adb install -r build/agent-apks/app-nonRoot-debug.apk
 adb push /private/tmp/depth_anything_v2_vits_dynamic.onnx \
-  /sdcard/Android/data/com.gilleece.moonlightxr.debug/files/depth_anything_v2_vits_dynamic.onnx
-adb shell am start -n com.gilleece.moonlightxr.debug/com.limelight.DepthV2BenchmarkActivity
-adb shell am force-stop com.gilleece.moonlightxr.debug
-adb shell am start -n com.gilleece.moonlightxr.debug/com.limelight.DepthV2BenchmarkActivity --es backend nnapi
-adb shell am force-stop com.gilleece.moonlightxr.debug
-adb shell am start -n com.gilleece.moonlightxr.debug/com.limelight.DepthV2BenchmarkActivity --es backend xnnpack
+  /sdcard/Android/data/com.liang.xrmediaviewer.debug/files/depth_anything_v2_vits_dynamic.onnx
+adb shell am start -n com.liang.xrmediaviewer.debug/com.limelight.DepthV2BenchmarkActivity
+adb shell am force-stop com.liang.xrmediaviewer.debug
+adb shell am start -n com.liang.xrmediaviewer.debug/com.limelight.DepthV2BenchmarkActivity --es backend nnapi
+adb shell am force-stop com.liang.xrmediaviewer.debug
+adb shell am start -n com.liang.xrmediaviewer.debug/com.limelight.DepthV2BenchmarkActivity --es backend xnnpack
 adb push /private/tmp/depth_anything_v2_qualcomm_518.tflite \
-  /sdcard/Android/data/com.gilleece.moonlightxr.debug/files/depth_anything_v2_qualcomm_518.tflite
+  /sdcard/Android/data/com.liang.xrmediaviewer.debug/files/depth_anything_v2_qualcomm_518.tflite
 adb push build/depth-comparison/mmd-frames/frame_001.jpg \
-  /sdcard/Android/data/com.gilleece.moonlightxr.debug/files/v2_benchmark.jpg
-adb shell am force-stop com.gilleece.moonlightxr.debug
-adb shell am start -n com.gilleece.moonlightxr.debug/com.limelight.DepthV2BenchmarkActivity \
+  /sdcard/Android/data/com.liang.xrmediaviewer.debug/files/v2_benchmark.jpg
+adb shell am force-stop com.liang.xrmediaviewer.debug
+adb shell am start -n com.liang.xrmediaviewer.debug/com.limelight.DepthV2BenchmarkActivity \
   --es backend litert_gpu --ei runs 60
 adb logcat -d -s XR3D-V2-BENCH:I '*:S'
 ```

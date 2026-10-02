@@ -87,18 +87,18 @@
 #define VIDEO_CONTROL_NEXT 6
 
 // Horizontal hit zones in the video control texture.
-#define VIDEO_PREVIOUS_L 0.015f
-#define VIDEO_PREVIOUS_R 0.105f
-#define VIDEO_BACK_L 0.115f
-#define VIDEO_BACK_R 0.205f
-#define VIDEO_TOGGLE_L 0.215f
-#define VIDEO_TOGGLE_R 0.305f
-#define VIDEO_TRACK_L 0.335f
-#define VIDEO_TRACK_R 0.775f
-#define VIDEO_FORWARD_L 0.805f
-#define VIDEO_FORWARD_R 0.895f
-#define VIDEO_NEXT_L 0.905f
-#define VIDEO_NEXT_R 0.995f
+#define VIDEO_PREVIOUS_L 0.010f
+#define VIDEO_PREVIOUS_R 0.070f
+#define VIDEO_BACK_L 0.080f
+#define VIDEO_BACK_R 0.140f
+#define VIDEO_TOGGLE_L 0.150f
+#define VIDEO_TOGGLE_R 0.210f
+#define VIDEO_TRACK_L 0.235f
+#define VIDEO_TRACK_R 0.845f
+#define VIDEO_FORWARD_L 0.860f
+#define VIDEO_FORWARD_R 0.920f
+#define VIDEO_NEXT_L 0.930f
+#define VIDEO_NEXT_R 0.990f
 
 // Settings the panel can hand back to Java to be applied and stored
 #define SETTING_SHARPEN 0

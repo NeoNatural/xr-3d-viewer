@@ -7,7 +7,7 @@ void imageNavPose(XrCtx* ctx, XrPosef screenPose, float* width, float* height,
                   XrPosef* pose) {
     int texW = ctx->videoControlsEnabled ? VIDEO_CONTROL_TEX_W : IMAGE_NAV_TEX_W;
     int texH = ctx->videoControlsEnabled ? VIDEO_CONTROL_TEX_H : IMAGE_NAV_TEX_H;
-    *width = ctx->screenWidth * (ctx->videoControlsEnabled ? 0.62f : 0.31f);
+    *width = ctx->screenWidth * (ctx->videoControlsEnabled ? 0.95f : 0.31f);
     *height = *width * texH / texW;
     float screenHeight = ctx->screenWidth * ctx->videoDisplayAspect;
     Vec3 offset = { 0.0f, screenHeight * 0.5f + *height * 0.5f

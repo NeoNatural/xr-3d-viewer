@@ -156,11 +156,11 @@ final class XrPanels {
             { KB_CODE_SYMBOLS, ',', 32, '.', 13, KB_CODE_HIDE }
     };
 
-    // The button that ends the stream and the prompt it opens. One sheet per
+    // The button that returns to the menu and the prompt it opens. One sheet per
     // lit button, in zone order, so which one shows is a swapchain handle on
     // the native side rather than an upload. The sheet and where its buttons
     // sit on it are the EXIT_ values in XrShared.
-    private static final String EXIT_QUESTION = "Exit the stream?";
+    private static final String EXIT_QUESTION = "Back to menu?";
 
     private final Context context;
     // The photos in the assets folder, in the order the picker shows them
@@ -1094,9 +1094,8 @@ final class XrPanels {
         canvas.drawText(EXIT_QUESTION, EXIT_TEX_W * 0.5f,
                 questionY - (text.ascent() + text.descent()) * 0.5f, text);
 
-        // Leaving is the destructive half, so it is the one that reads red.
-        // Both are the same shape, so neither is the easier target.
-        drawExitChoice(canvas, paint, text, EXIT_EXIT_L, EXIT_EXIT_R, "Exit",
+        // Both choices retain their existing shape and hit target.
+        drawExitChoice(canvas, paint, text, EXIT_EXIT_L, EXIT_EXIT_R, "Back to menu",
                 0xFFE05A5A, hot == EXIT_ZONE_EXIT);
         drawExitChoice(canvas, paint, text, EXIT_CANCEL_L, EXIT_CANCEL_R, "Cancel",
                 0xEEFFFFFF, hot == EXIT_ZONE_CANCEL);
@@ -1127,6 +1126,11 @@ final class XrPanels {
 
         text.setColor(colour);
         text.setTextSize(30.0f);
+        float labelWidth = text.measureText(label);
+        float availableWidth = box.width() - 24.0f;
+        if (labelWidth > availableWidth) {
+            text.setTextSize(30.0f * availableWidth / labelWidth);
+        }
         canvas.drawText(label, box.centerX(),
                 box.centerY() - (text.ascent() + text.descent()) * 0.5f, text);
     }

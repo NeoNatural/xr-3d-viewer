@@ -257,7 +257,14 @@ int updateVideoControlArt(XrCtx* ctx, int state) {
     if (px == NULL) return 0;
     int hover = state % 6;
     int playing = state >= 6;
-    float centers[5] = { 61.0f, 164.0f, 266.0f, 870.0f, 973.0f };
+    // Derive artwork centers from the same zones used by controller hit tests.
+    float centers[5] = {
+        (VIDEO_PREVIOUS_L + VIDEO_PREVIOUS_R) * 0.5f * width,
+        (VIDEO_BACK_L + VIDEO_BACK_R) * 0.5f * width,
+        (VIDEO_TOGGLE_L + VIDEO_TOGGLE_R) * 0.5f * width,
+        (VIDEO_FORWARD_L + VIDEO_FORWARD_R) * 0.5f * width,
+        (VIDEO_NEXT_L + VIDEO_NEXT_R) * 0.5f * width
+    };
     float cy = height * 0.5f;
     float trackL = VIDEO_TRACK_L * width;
     float trackR = VIDEO_TRACK_R * width;

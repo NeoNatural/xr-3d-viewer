@@ -91,7 +91,7 @@ Download the signed APK from the repository's
 it with Meta Quest Developer Hub, SideQuest, or ADB:
 
 ```sh
-adb install -r xr-3d-viewer-v0.4.apk
+adb install -r xr-3d-viewer-v0.5.apk
 ```
 
 Android refuses unsigned release APKs. Official release assets are verified by
@@ -99,14 +99,24 @@ CI before publication and are accompanied by a SHA-256 checksum.
 
 ## Usage
 
-1. Launch **Moonlight XR** on the headset.
+1. Launch **XR Media Viewer** on the headset.
 2. Choose **Browse local photos and videos** or **Browse SMB photos and videos**.
 3. For local media, grant read access to a folder through Android's folder
-   picker. For SMB, enter the NAS host, share, and credentials.
+   picker. For SMB, enter the NAS host and credentials; leave Share blank to list
+   shared folders or fill it in to open a specific share.
 4. Select an image or video. Other supported items in the same folder become
    the next/previous playlist.
 5. Open **Media Settings** to adjust depth cadence, eye order, passthrough, and
    performance diagnostics.
+
+Use either controller's stick to go to the previous/next image or seek video
+back/forward 10 seconds. Canvas grabbing retains stick distance/scale adjustment;
+release and center the sticks before navigating media. The top controls appear
+on hover, and the browser Back icon returns to the main menu at the root.
+
+v0.5 uses `com.liang.xrmediaviewer`, allowing installation alongside Moonlight XR.
+NAS profiles and preferences from the former package must be entered again.
+See [CHANGELOG.md](CHANGELOG.md) for release details.
 
 SMB credentials never leave the device. Saved passwords are encrypted with an
 app-owned Android Keystore AES-GCM key. Bug reports are only created when the

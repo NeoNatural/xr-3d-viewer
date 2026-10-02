@@ -17,9 +17,9 @@ if [[ ! "$image_name" =~ ^[A-Za-z0-9._-]+$ || "$image_name" == "." || "$image_na
   exit 2
 fi
 
-device_dir=/sdcard/Android/data/com.gilleece.moonlightxr.debug/files/test_media
+device_dir=/sdcard/Android/data/com.liang.xrmediaviewer.debug/files/test_media
 adb shell mkdir -p "$device_dir"
 adb push "$image_path" "$device_dir/$image_name"
 adb shell am start -n \
-  com.gilleece.moonlightxr.debug/com.limelight.StaticImageXrActivity \
+  com.liang.xrmediaviewer.debug/com.limelight.StaticImageXrActivity \
   --es testImageName "$image_name"

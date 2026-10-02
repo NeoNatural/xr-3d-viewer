@@ -36,6 +36,7 @@
 
 #include "xr_math.h"
 #include "xr_shared.h"
+#include "xr_media_stick.h"
 
 #define TAG "moonlight-xr"
 
@@ -225,7 +226,7 @@ static inline long nowNs(void) {
 #define IMAGE_NAV_TEX_W 512
 #define IMAGE_NAV_TEX_H 112
 #define IMAGE_NAV_STATES 8
-#define VIDEO_CONTROL_TEX_W 1024
+#define VIDEO_CONTROL_TEX_W 1536
 #define VIDEO_CONTROL_TEX_H 128
 #define VIDEO_CONTROL_STATES 12
 #define MEDIA_CONTROL_STATES VIDEO_CONTROL_STATES
@@ -823,6 +824,7 @@ typedef struct {
     // without this the press that picks something goes on to click whatever the
     // modal was covering as soon as it closes.
     int triggerSwallowed[SRC_COUNT];
+    MediaStickState mediaSticks[HAND_COUNT];
     int imageNavEnabled;
     int videoControlsEnabled;
     int imageNavHover;

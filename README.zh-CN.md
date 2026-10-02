@@ -81,7 +81,7 @@ Media3/MediaCodec -> SurfaceTexture（外部 OES 纹理）
 已签名 APK，然后使用 Meta Quest Developer Hub、SideQuest 或 ADB 侧载：
 
 ```sh
-adb install -r xr-3d-viewer-v0.4.apk
+adb install -r xr-3d-viewer-v0.5.apk
 ```
 
 Android 会拒绝安装未签名的 Release APK。正式发布的附件在上传前均由 CI 验证，并附带
@@ -89,13 +89,20 @@ SHA-256 校验文件。
 
 ## 使用方法
 
-1. 在头显上启动 **Moonlight XR**。
+1. 在头显上启动 **XR Media Viewer**。
 2. 选择 **Browse local photos and videos**（浏览本地照片和视频）或
    **Browse SMB photos and videos**（浏览 SMB 照片和视频）。
 3. 浏览本地媒体时，通过 Android 文件夹选择器授予文件夹读取权限；使用 SMB 时，输入
-   NAS 主机、共享名称和凭据。
+   NAS 主机和凭据。Share 留空时列出文件共享，填写时直接进入指定共享。
 4. 选择一张图像或一个视频。同一文件夹内的其他受支持文件会成为上一个/下一个播放项。
 5. 打开 **Media Settings**（媒体设置），调整深度更新频率、左右眼顺序、透视模式和性能诊断。
+
+左右手摇杆都支持切换上一张/下一张图片，或让视频后退/前进 10 秒。抓握画布时仍用于
+调整距离和缩放；松开后需让摇杆回中再操作媒体。顶部控制条悬停显示；浏览器返回图标
+在根目录可回到主菜单。
+
+v0.5 使用独立包名 `com.liang.xrmediaviewer`，可与 Moonlight XR 同时安装。旧包中的 NAS
+配置和偏好需要重新填写。完整更新内容见 [CHANGELOG.md](CHANGELOG.md)。
 
 SMB 凭据不会离开设备。保存的密码使用应用专属的 Android Keystore AES-GCM 密钥加密。
 只有用户明确要求时才会创建错误报告；除非维护者在构建时配置了报告接收端点，否则报告仅

@@ -480,7 +480,9 @@ static void addBarButtonLayers(XrCtx* ctx, const FrameView* view, FrameLayers* l
 
 static void addImageNavLayer(XrCtx* ctx, const FrameView* view, FrameLayers* layers) {
     if ((!ctx->imageNavEnabled && !ctx->videoControlsEnabled) || ctx->pickerOpen
-            || ctx->cogOpen || ctx->kbOpen || ctx->exitConfirmOpen) return;
+            || ctx->cogOpen || ctx->kbOpen || ctx->exitConfirmOpen
+            || ctx->grabMode != GRAB_NONE || ctx->hoverKind != HOVER_IMAGE_NAV) return;
+    // Hit testing remains active while hidden, matching the lower toolbar.
     int texW = IMAGE_NAV_TEX_W;
     int texH = IMAGE_NAV_TEX_H;
     int state;

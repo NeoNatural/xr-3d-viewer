@@ -39,7 +39,10 @@ final class SmbProfileStore {
             this.password = password;
         }
 
-        String label() { return host + "/" + share + " (" + username + ")"; }
+        String label() {
+            return host + "/" + (share.isEmpty() ? "All shares" : share)
+                    + " (" + username + ")";
+        }
     }
 
     private static SharedPreferences prefs(Context context) {

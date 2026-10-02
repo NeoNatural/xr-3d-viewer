@@ -854,6 +854,7 @@ typedef struct {
 
 // Drops whatever the pointer was holding once it stops being watched
 static void releaseInput(XrCtx* ctx, float* out) {
+    for (int h = 0; h < HAND_COUNT; h++) ctx->mediaSticks[h].latched = 1;
     ctx->buttonsDown = 0;
     ctx->beamVisible = 0;
     if (ctx->grabMode != 0) {
@@ -1856,6 +1857,31 @@ static void updateScroll(XrCtx* ctx, InputFrame* f, int hit) {
     f->out[IN_SCROLL] = clicks;
 }
 
+// Read each controller's subaction separately: the aggregate action can
+// choose one hand and hide the other. Placement owns both sticks while held.
+static void updateMediaSticks(XrCtx* ctx, InputFrame* f, int wasBlocked) {
+    int blocked = wasBlocked || ctx->grabMode != GRAB_NONE || ctx->pickerOpen
+            || ctx->cogOpen || ctx->exitConfirmOpen || ctx->kbOpen
+            || (!ctx->imageNavEnabled && !ctx->videoControlsEnabled)
+            || f->out[IN_IMAGE_NAV] != 0.0f || f->out[IN_VIDEO_CONTROL] != 0.0f;
+    float x[HAND_COUNT], y[HAND_COUNT];
+    int unavailable[HAND_COUNT];
+    for (int h = 0; h < HAND_COUNT; h++) {
+        XrVector2f stick = actionVec2(ctx, ctx->scrollAction, h);
+        x[h] = stick.x;
+        y[h] = stick.y;
+        unavailable[h] = blocked || !f->aimValid[h] || ctx->usingHands[h];
+    }
+    int direction = mediaSticksStep(ctx->mediaSticks, x, y, unavailable);
+    if (direction == 0) return;
+    if (ctx->videoControlsEnabled) {
+        f->out[IN_VIDEO_CONTROL] = direction > 0
+                ? VIDEO_CONTROL_FORWARD : VIDEO_CONTROL_BACK;
+    } else {
+        f->out[IN_IMAGE_NAV] = (float)direction;
+    }
+}
+
 // Aimed at nothing at all, so the ray runs off into the room rather than
 // blinking out. A laser that comes and goes is harder to aim than one that
 // always shows where the hand is looking, so the only thing that retires it
@@ -1928,7 +1954,7 @@ Java_com_limelight_binding_video_XrRenderer_nativeUpdateInput(JNIEnv* env, jobje
     sync.countActiveActionSets = 1;
     sync.activeActionSets = &active;
     if (XR_FAILED(xrSyncActions(ctx->session, &sync))) {
-        ctx->buttonsDown = 0;
+        releaseInput(ctx, out);
         (*env)->SetFloatArrayRegion(env, outArr, 0, IN_SLOTS, out);
         return;
     }
@@ -1974,6 +2000,8 @@ Java_com_limelight_binding_video_XrRenderer_nativeUpdateInput(JNIEnv* env, jobje
     updatePointerWake(ctx, &f);
     pickPointingSource(ctx, &f);
     clearHotState(ctx);
+    int mediaWasBlocked = ctx->grabMode != GRAB_NONE || ctx->pickerOpen
+            || ctx->cogOpen || ctx->exitConfirmOpen || ctx->kbOpen;
     if (ctx->pickerOpen) {
         updatePicker(ctx, &f);
     }
@@ -1996,6 +2024,7 @@ Java_com_limelight_binding_video_XrRenderer_nativeUpdateInput(JNIEnv* env, jobje
     applyGrab(ctx, f.aimPoses, f.aimValid, f.hand, f.hover, ctx->hoverCorner, offPicture,
               f.height, f.curved);
     applyGrabStick(ctx, f.aimPoses, f.dt, f.headValid);
+    updateMediaSticks(ctx, &f, mediaWasBlocked);
     f.screenPose = ctx->screenPose;
     f.height = ctx->screenWidth * ctx->videoDisplayAspect;
     f.radius = ctx->screenRadius;

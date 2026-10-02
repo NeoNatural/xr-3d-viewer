@@ -115,8 +115,8 @@ android {
         minSdk 23
         targetSdk 36
 
-        versionName "12.1-xr0.4"
-        versionCode = 31404
+        versionName "12.1-xr0.5"
+        versionCode = 31405
 
         // Generate native debug symbols to allow Google Play to symbolicate our native crashes
         ndk.debugSymbolLevel = 'FULL'
@@ -154,7 +154,7 @@ android {
                 }
             }
 
-            applicationId "com.gilleece.moonlightxr.root"
+            applicationId "com.liang.xrmediaviewer.root"
             dimension "root"
             buildConfigField "boolean", "ROOT_BUILD", "true"
         }
@@ -166,7 +166,7 @@ android {
                 }
             }
 
-            applicationId "com.gilleece.moonlightxr"
+            applicationId "com.liang.xrmediaviewer"
             dimension "root"
             buildConfigField "boolean", "ROOT_BUILD", "false"
         }
@@ -214,8 +214,8 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix ".debug"
-            resValue "string", "app_label", "Moonlight XR (Debug)"
-            resValue "string", "app_label_root", "Moonlight XR (Root Debug)"
+            resValue "string", "app_label", "XR Media Viewer (Debug)"
+            resValue "string", "app_label_root", "XR Media Viewer (Root Debug)"
 
             // The renderer's setprop tuning knobs and frame capture live in
             // debug builds only
@@ -232,8 +232,8 @@ android {
         release {
             // This fork ships under its own applicationId, so the unofficial
             // suffix upstream asks forks to keep is no longer needed.
-            resValue "string", "app_label", "Moonlight XR"
-            resValue "string", "app_label_root", "Moonlight XR (Root)"
+            resValue "string", "app_label", "XR Media Viewer"
+            resValue "string", "app_label_root", "XR Media Viewer (Root)"
 
             if (canSign) {
                 signingConfig signingConfigs.release

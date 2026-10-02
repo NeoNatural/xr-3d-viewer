@@ -115,3 +115,25 @@ Official Video Depth Anything was re-evaluated before attempting integration. Th
 - Android SDK 37 and NDK 29 installed. The unmodified `assembleNonRootDebug` variant builds successfully through `tools/build-local.sh`; Java and native unit tests pass.
 - Quest 3 is visible to ADB. The debug APK installed successfully as `com.gilleece.moonlightxr.debug`, and `com.limelight.PcView` started with a live process.
 - Still verify a Moonlight stream in 2D and model based stereo on the headset. Record XR FPS, depth inference time, warp GPU time, and memory during that session.
+
+## Optional SMB share browsing
+
+The SMB Share field is optional. A blank share sets the browsing root to `smb://host/`, where jcifs enumerates disk shares without querying their timestamps or contents. IPC and printer shares are omitted. Opening a share uses the existing directory navigation and media paths; Back at its root returns to the share list. Shares can be listed even when the account cannot open them; a denied folder preserves the current listing and navigation history. Explicit-share targets retain their original scope. Saved host-only profiles display “All shares”; enumeration failures and empty lists suggest entering a share manually.
+
+## Independent media viewer application identity
+
+Release builds now use `com.liang.xrmediaviewer` and the launcher name `XR Media Viewer`. Debug adds `.debug`; the legacy root flavor adds `.root`. This allows installation alongside Moonlight XR. The Java/JNI namespace remains `com.limelight`; report provider authorities already derive from the application ID. Existing old-package preferences and encrypted SMB credentials stay with the old installation and are not migrated.
+
+## Controller stick media navigation
+
+Either tracked controller can nudge its thumbstick left/right to navigate images or seek video by the existing ten-second step. Each horizontal deflection emits one event, with 0.65 activation and 0.25 neutral hysteresis; vertical-dominant movement is ignored. Both sticks are suppressed while moving or resizing the canvas, during modal UI, and on tracking/focus loss. Release from placement requires a subsequent neutral sample before navigation rearms, including the non-grabbing hand. The original grabbing-hand distance (Y) and scale (X) logic is unchanged. Same-frame matching nudges merge into one action and opposing nudges cancel; an on-screen control event takes priority. Navigation reuses existing native-to-Java media callbacks and does not change frame/decoder/depth ownership. Native tests cover held input, hysteresis, both hands, simultaneous gestures and suppression/rearming; Java tests and debug/release builds pass. Worn-headset placement and playback checks remain required.
+
+## Viewer menu and browser navigation controls
+
+The user confirmed blank-share SMB browsing and left/right controller-stick media navigation work on Quest. The viewer return prompt now says “Back to menu?” with “Back to menu” and “Cancel”; confirmation text fits its existing hit target. Both SMB and local browsers expose an icon-only left-facing Back button at the left of the top action row. It returns to the main menu at the browsing root, is disabled while loading, and shares the B/Y Back navigation path. Local Back now commits the parent-stack pop only after a successful directory load, matching SMB failure handling.
+
+The browser Back icon uses the downloaded Lucide arrow-left SVG converted to an Android vector drawable. Its 48 dp square touch target has no visible label; accessibility retains “Back to parent folder”. Loading disablement is shown by dimming the icon; at the root it remains usable to return to the main menu.
+
+## Root return and hovering media controls
+
+Both browser Back icons now return to `PcView` at their root via CLEAR_TOP/SINGLE_TOP, even when the debug browser was launched directly without a home activity beneath it. At deeper levels they retain parent navigation. The top image/video control quad is submitted only while its region is hovered and no canvas grab or modal is active; its hit testing remains active while hidden, like the lower toolbar. Video controls occupy 95% of screen width (formerly 62%), with a 1536×128 texture to preserve approximately the former physical height. The seek track spans 61% of that bar (formerly 44%), giving roughly 2.1× the old physical seek length. Button artwork centers derive from the shared hit zones instead of fixed 1024-pixel coordinates.

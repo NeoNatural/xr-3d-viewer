@@ -15,12 +15,15 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.limelight.R;
+import com.limelight.PcView;
 import com.limelight.StaticImageXrActivity;
 import com.limelight.VideoXrActivity;
 import com.limelight.media.MediaDirectoryOrder;
@@ -49,6 +52,9 @@ public final class LocalBrowserActivity extends Activity {
     private final Set<String> videoUris = new HashSet<>();
     private ListView list;
     private TextView status;
+    private ImageButton upButton;
+    private Button chooseButton;
+    private boolean busy;
     private LocalAdapter adapter;
     private Uri treeUri;
     private Uri currentDirectory;
@@ -60,9 +66,21 @@ public final class LocalBrowserActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         int pad = Math.round(16 * getResources().getDisplayMetrics().density);
         root.setPadding(pad, pad, pad, pad);
-        Button choose = new Button(this);
-        choose.setText("Choose local folder");
-        root.addView(choose);
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        root.addView(actions);
+        upButton = new ImageButton(this);
+        upButton.setImageResource(R.drawable.ic_browser_back);
+        upButton.setContentDescription("Back to menu");
+        int backSize = Math.round(48 * getResources().getDisplayMetrics().density);
+        int backPadding = Math.round(12 * getResources().getDisplayMetrics().density);
+        upButton.setPadding(backPadding, backPadding, backPadding, backPadding);
+        upButton.setEnabled(true);
+        actions.addView(upButton, new LinearLayout.LayoutParams(backSize, backSize));
+        chooseButton = new Button(this);
+        chooseButton.setText("Choose local folder");
+        actions.addView(chooseButton, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 2));
         status = new TextView(this);
         status.setSingleLine(true);
         status.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
@@ -72,7 +90,8 @@ public final class LocalBrowserActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
         setContentView(root);
 
-        choose.setOnClickListener(v -> chooseTree());
+        chooseButton.setOnClickListener(v -> chooseTree());
+        upButton.setOnClickListener(v -> navigateUp());
         list.setOnItemClickListener((parent, view, position, id) -> open(entries.get(position)));
 
         String saved = getSharedPreferences(PREFS, MODE_PRIVATE).getString(LAST_TREE, null);
@@ -108,13 +127,15 @@ public final class LocalBrowserActivity extends Activity {
             treeUri = selected;
             parents.clear();
             String rootId = DocumentsContract.getTreeDocumentId(selected);
-            loadDirectory(DocumentsContract.buildDocumentUriUsingTree(selected, rootId), false);
+            loadDirectory(DocumentsContract.buildDocumentUriUsingTree(selected, rootId), false, false);
         } catch (RuntimeException error) {
             status.setText("Unable to open folder: " + error.getMessage());
         }
     }
 
-    private void loadDirectory(Uri directory, boolean rememberParent) {
+    private void loadDirectory(Uri directory, boolean rememberParent, boolean goingBack) {
+        if (busy) return;
+        setBusy(true);
         status.setText("Loading…");
         loader.execute(() -> {
             ArrayList<MediaEntry> found = new ArrayList<>();
@@ -149,6 +170,7 @@ public final class LocalBrowserActivity extends Activity {
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
                     if (rememberParent && currentDirectory != null) parents.push(currentDirectory);
+                    if (goingBack) parents.pop();
                     currentDirectory = directory;
                     entries.clear();
                     entries.addAll(found);
@@ -158,20 +180,24 @@ public final class LocalBrowserActivity extends Activity {
                     adapter = new LocalAdapter();
                     list.setAdapter(adapter);
                     status.setText(found.size() + " media items — " + directory);
+                    setBusy(false);
                     if (found.isEmpty()) Toast.makeText(this,
                             "No supported photos or videos in this folder.",
                             Toast.LENGTH_SHORT).show();
                 });
             } catch (Exception error) {
-                runOnUiThread(() -> status.setText("Unable to read folder: "
-                        + error.getMessage()));
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    status.setText("Unable to read folder: " + error.getMessage());
+                    setBusy(false);
+                });
             }
         });
     }
 
     private void open(MediaEntry entry) {
         if (entry.directory) {
-            loadDirectory(Uri.parse(entry.uri), true);
+            loadDirectory(Uri.parse(entry.uri), true, false);
             return;
         }
         if (!videoUris.contains(entry.uri)) {
@@ -217,12 +243,32 @@ public final class LocalBrowserActivity extends Activity {
                 || name != null && SmbClientManager.isVideo(name);
     }
 
+    private void setBusy(boolean value) {
+        busy = value;
+        upButton.setEnabled(!value);
+        upButton.setContentDescription(parents.isEmpty() ? "Back to menu" : "Back to parent folder");
+        upButton.setAlpha(upButton.isEnabled() ? 1.0f : 0.35f);
+        chooseButton.setEnabled(!value);
+        list.setEnabled(!value);
+    }
+
+    private void navigateUp() {
+        if (busy) return;
+        if (!parents.isEmpty()) loadDirectory(parents.peek(), false, true);
+        else returnToMenu();
+    }
+
+    private void returnToMenu() {
+        Intent menu = new Intent(this, PcView.class);
+        menu.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(menu);
+        finish();
+    }
+
     @Override
     public void onBackPressed() {
-        if (!parents.isEmpty()) {
-            Uri target = parents.pop();
-            loadDirectory(target, false);
-        } else super.onBackPressed();
+        if (busy) return;
+        navigateUp();
     }
 
     @Override

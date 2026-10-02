@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Properties;
 
 import jcifs.CIFSContext;
+import jcifs.SmbConstants;
 import jcifs.config.PropertyConfiguration;
 import jcifs.context.BaseContext;
 import jcifs.smb.NtlmPasswordAuthenticator;
@@ -31,10 +32,11 @@ public final class SmbStorage implements MediaStorage {
 
     public SmbStorage(String host, String share, String domain, String username, String password)
             throws IOException {
-        if (!simpleComponent(host) || !simpleComponent(share)) {
+        if (!simpleComponent(host) || share == null
+                || (!share.isEmpty() && !simpleComponent(share))) {
             throw new IllegalArgumentException("Invalid SMB host or share");
         }
-        rootUri = "smb://" + host + "/" + share + "/";
+        rootUri = "smb://" + host + "/" + (share.isEmpty() ? "" : share + "/");
         this.domain = domain;
         this.username = username;
         this.password = password;
@@ -60,6 +62,11 @@ public final class SmbStorage implements MediaStorage {
         return rootUri;
     }
 
+    public boolean isShareList(String uri) {
+        return rootUri.equals(uri)
+                && rootUri.indexOf('/', "smb://".length()) == rootUri.length() - 1;
+    }
+
     /** Sequential image reads keep the SMB file handle open until the decoder closes it. */
     public InputStream openInputStream(String uri) throws IOException {
         try (SmbFile ignored = file(uri)) {
@@ -70,14 +77,24 @@ public final class SmbStorage implements MediaStorage {
     @Override
     public List<MediaEntry> list(String uri) throws IOException {
         try (SmbFile directory = file(uri)) {
-            if (!directory.isDirectory()) {
+            boolean shareList = isShareList(uri);
+            if (!shareList && !directory.isDirectory()) {
                 throw new IOException("Not an SMB directory: " + uri);
             }
             SmbFile[] children = directory.listFiles();
             List<MediaEntry> entries = new ArrayList<>(children.length);
             try {
                 for (SmbFile child : children) {
-                    entries.add(entry(child));
+                    if (shareList) {
+                        // Enumeration can include IPC and printers. Do not query share
+                        // metadata here: a denied share must not break the whole list.
+                        if (child.getType() == SmbConstants.TYPE_SHARE) {
+                            entries.add(new MediaEntry(child.getCanonicalPath(),
+                                    child.getName(), true, 0, 0));
+                        }
+                    } else {
+                        entries.add(entry(child));
+                    }
                 }
             } finally {
                 for (SmbFile child : children) {
@@ -131,12 +148,12 @@ public final class SmbStorage implements MediaStorage {
 
     private SmbFile file(String uri) throws MalformedURLException {
         if (uri == null || !uri.startsWith(rootUri)) {
-            throw new IllegalArgumentException("SMB URI is outside the configured share");
+            throw new IllegalArgumentException("SMB URI is outside the configured SMB target");
         }
         SmbFile file = new SmbFile(uri, context);
         if (!file.getCanonicalPath().startsWith(rootUri)) {
             file.close();
-            throw new IllegalArgumentException("SMB URI escapes the configured share");
+            throw new IllegalArgumentException("SMB URI escapes the configured SMB target");
         }
         return file;
     }

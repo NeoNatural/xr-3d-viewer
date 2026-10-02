@@ -7,6 +7,7 @@ import android.text.InputType;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ListView;
@@ -14,6 +15,8 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.limelight.R;
+import com.limelight.PcView;
 import com.limelight.StaticImageXrActivity;
 import com.limelight.VideoXrActivity;
 import com.limelight.binding.video.StillImageDepthBatcher;
@@ -43,6 +46,7 @@ public final class SmbBrowserActivity extends Activity {
     private Button forgetButton;
     private final List<SmbProfileStore.Profile> profiles = new ArrayList<>();
     private TextView status;
+    private ImageButton upButton;
     private Button connectButton;
     private Button changeNasButton;
     private Button lastImageButton;
@@ -72,7 +76,7 @@ public final class SmbBrowserActivity extends Activity {
         forgetButton.setText("Forget selected NAS");
         connectionPanel.addView(forgetButton);
         hostField = field(connectionPanel, "NAS host or IP", InputType.TYPE_CLASS_TEXT);
-        shareField = field(connectionPanel, "Share", InputType.TYPE_CLASS_TEXT);
+        shareField = field(connectionPanel, "Share (optional; blank lists shares)", InputType.TYPE_CLASS_TEXT);
         domainField = field(connectionPanel, "Domain (optional)", InputType.TYPE_CLASS_TEXT);
         userField = field(connectionPanel, "Username", InputType.TYPE_CLASS_TEXT);
         passwordField = field(connectionPanel, "Password", InputType.TYPE_CLASS_TEXT
@@ -83,6 +87,15 @@ public final class SmbBrowserActivity extends Activity {
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         layout.addView(actions);
+        upButton = new ImageButton(this);
+        upButton.setImageResource(R.drawable.ic_browser_back);
+        upButton.setContentDescription("Back to menu");
+        int backSize = Math.round(48 * getResources().getDisplayMetrics().density);
+        int backPadding = Math.round(12 * getResources().getDisplayMetrics().density);
+        upButton.setPadding(backPadding, backPadding, backPadding, backPadding);
+        upButton.setEnabled(true);
+        actions.addView(upButton, new LinearLayout.LayoutParams(backSize, backSize));
+        upButton.setOnClickListener(v -> navigateUp());
         changeNasButton = new Button(this);
         changeNasButton.setText("Change NAS");
         changeNasButton.setVisibility(View.GONE);
@@ -96,7 +109,7 @@ public final class SmbBrowserActivity extends Activity {
         actions.addView(lastImageButton, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 2));
         status = new TextView(this);
-        status.setText("Enter a NAS and share to browse directly over SMB.");
+        status.setText("Enter a NAS; leave Share blank to browse its shared folders.");
         status.setSingleLine(true);
         status.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
         layout.addView(status);
@@ -178,8 +191,8 @@ public final class SmbBrowserActivity extends Activity {
         String domain = domainField.getText().toString().trim();
         String user = userField.getText().toString();
         String password = passwordField.getText().toString();
-        if (host.isEmpty() || share.isEmpty()) {
-            status.setText("Host and share are required.");
+        if (host.isEmpty()) {
+            status.setText("Host is required.");
             return;
         }
         setBusy(true, "Connecting…");
@@ -212,7 +225,9 @@ public final class SmbBrowserActivity extends Activity {
                 if (candidate != null && candidate != SmbClientManager.active()) {
                     try { candidate.close(); } catch (IOException ignored) { }
                 }
-                showError("SMB connection failed", error);
+                showError(share.isEmpty()
+                        ? "Cannot list shares; check login or enter a Share manually"
+                        : "SMB connection failed", error);
             }
         });
     }
@@ -246,7 +261,10 @@ public final class SmbBrowserActivity extends Activity {
         adapter = new SmbThumbnailAdapter(this, storage, entries);
         listView.setAdapter(adapter);
         updateLastImageButton();
-        setBusy(false, uri + " — " + found.size() + " items");
+        setBusy(false, storage.isShareList(uri)
+                ? uri + " — " + found.size() + " shares"
+                    + (found.isEmpty() ? "; enter a Share manually if needed" : "")
+                : uri + " — " + found.size() + " items");
     }
 
     private void updateLastImageButton() {
@@ -316,6 +334,9 @@ public final class SmbBrowserActivity extends Activity {
     private void setBusy(boolean value, String message) {
         busy = value;
         connectButton.setEnabled(!value);
+        upButton.setEnabled(!value);
+        upButton.setContentDescription(parents.isEmpty() ? "Back to menu" : "Back to parent folder");
+        upButton.setAlpha(upButton.isEnabled() ? 1.0f : 0.35f);
         listView.setEnabled(!value);
         status.setText(message);
     }
@@ -328,13 +349,23 @@ public final class SmbBrowserActivity extends Activity {
         });
     }
 
+    private void navigateUp() {
+        if (busy) return;
+        if (!parents.isEmpty()) navigate(parents.peek(), false, true);
+        else returnToMenu();
+    }
+
+    private void returnToMenu() {
+        Intent menu = new Intent(this, PcView.class);
+        menu.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(menu);
+        finish();
+    }
+
     @Override
     public void onBackPressed() {
-        if (!busy && !parents.isEmpty()) {
-            navigate(parents.peek(), false, true);
-        } else {
-            super.onBackPressed();
-        }
+        if (busy) return;
+        navigateUp();
     }
 
     @Override

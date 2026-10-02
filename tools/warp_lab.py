@@ -6,8 +6,8 @@
 #
 # Capturing on device, while a VR stream is running:
 #   adb shell setprop debug.moonlight.capture 1
-#   adb shell ls /sdcard/Android/data/com.limelight.debug/files/
-#   adb pull /sdcard/Android/data/com.limelight.debug/files/ captures/
+#   adb shell ls /sdcard/Android/data/com.liang.xrmediaviewer.debug/files/
+#   adb pull /sdcard/Android/data/com.liang.xrmediaviewer.debug/files/ captures/
 #
 # Then:
 #   ./venv/bin/python tools/warp_lab.py captures/ --tag 1

@@ -26,6 +26,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -48,6 +49,10 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
 
     // Averaged over this many inferences before hitting logcat
     private static final int DEPTH_STATS_INTERVAL = 30;
+    // Far longer than any gap between two maps of a running stream, so a gap
+    // this long is a stall or the headset off the head, and stays out of the
+    // period
+    private static final long DEPTH_PERIOD_GAP_NS = 1000000000L;
     private static final int DEPTH_AGE_INTERVAL = 300;
 
     private static final float OVERLAY_TEXT_SIZE = 22.0f;
@@ -62,6 +67,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private final Object nativeLock = new Object();
     private Thread renderThread;
     private Thread depthThread;
+    private Thread depthStageThread;
     private SurfaceTexture surfaceTexture;
     private Surface inputSurface;
     // The frame loop reads the SurfaceTexture every frame, so it cannot be
@@ -78,13 +84,26 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private volatile long videoFrameIndex;
     private final AtomicBoolean forceVideoRedraw = new AtomicBoolean();
 
-    // Handoff to the depth thread. The frame loop fills the model input and
-    // sets pending, the depth thread runs inference and uploads the result.
-    // If it is still busy when the next frame is due, the frame loop skips
-    // rather than waits, so depth just runs at whatever rate it manages.
+    // The depth pipeline. Each capture travels in one of DEPTH_PAIRS pairs of
+    // native staging: the frame loop reads it back, the stage thread turns it
+    // into model input, the depth thread runs the model, and the stage thread
+    // uploads the map (DepthPairs). With two pairs the next frame is read
+    // back while the model runs and the last map goes up while the next one
+    // runs, so the model is the only stage a map waits on. The frame loop
+    // never waits: with no pair free, or a capture already waiting, it skips
+    // the frame, so depth runs at whatever rate the model manages. All of it
+    // under depthLock, which only the two depth threads ever wait on.
     private final Object depthLock = new Object();
-    private boolean depthPending;
-    private boolean depthBusy;
+    private final DepthPairs pairs = new DepthPairs(DEPTH_PAIRS);
+    // What each stage of a pair's trip cost, when the stage thread started on
+    // it, and the frame it came from, each written by the thread doing that
+    // stage before it hands the pair on under the lock
+    private final long[] pairCaptureNs = new long[DEPTH_PAIRS];
+    private final long[] pairFinishNs = new long[DEPTH_PAIRS];
+    private final long[] pairStartNs = new long[DEPTH_PAIRS];
+    private final long[] pairInferenceNs = new long[DEPTH_PAIRS];
+    private final long[] pairFrameIndex = new long[DEPTH_PAIRS];
+    private final long[] pairFrameNs = new long[DEPTH_PAIRS];
     private boolean depthExit;
     private int skippedFrames;
     private volatile boolean depthReady;
@@ -93,18 +112,17 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private final AtomicInteger pendingStillColorGeneration = new AtomicInteger(-1);
     private volatile int latchedStillColorGeneration = -1;
     private final AtomicReference<StillDepthFrame> pendingStillDepth = new AtomicReference<>();
-    private int captureStillGeneration;
+    private final int[] pairStillGeneration = new int[DEPTH_PAIRS];
+    private boolean stillUploadBusy;
+    private boolean captureReservation;
     private int publishedStillGeneration = -1;
     private volatile boolean preparedStillDepthActive;
-    private volatile long lastCaptureNs;
 
     // How far behind the picture the depth map is. The map warping a frame was
     // computed from an earlier one, and then reused until the next inference
     // lands, so during camera motion it is spatially offset from the colour it
     // is warping. Measured rather than assumed: these are the frame index and
     // clock reading of the frame the live depth map came from.
-    private long captureFrameIndex;
-    private long captureFrameNs;
     private volatile long publishedFrameIndex;
     private volatile long publishedFrameNs;
 
@@ -118,8 +136,11 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private Canvas overlayCanvas;
     private Paint overlayPaint;
     private volatile float lastInferenceMs;
+    // Which model, at what size, on which runtime, for the overlay
+    private volatile String depthLabel = "";
     private volatile float lastDepthAgeMs;
     private volatile int lastDepthSkips;
+    private volatile float lastMapsPerSecond;
 
     // Controller pointer. The native side does the ray maths and hands back a
     // hit point and a button mask, this side turns that into host events. The
@@ -330,22 +351,29 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     // envResTier is the EnvResTier the room renders at: 0 low, 1 standard,
     // 2 high, 3 ultra
     private native long nativeInit(Activity activity, int width, int height, int stereoMode,
+                                   int depthWidth, int depthHeight,
                                    boolean depthDebug, int convergence, int depthScale,
                                    boolean handTracking, int sharpenMode, boolean perfOverlay,
                                    boolean ambilight, int ambiLevel, boolean roomLight,
                                    int envResTier, int mediaControlsMode);
     private native void nativeSetCaptureDir(long ctx, String dir);
     private native int nativeGetTexId(long ctx);
-    private native ByteBuffer nativeGetModelInput(long ctx);
-    private native ByteBuffer nativeGetModelOutput(long ctx);
-    private native long nativeCaptureDepthInput(long ctx, float[] texMatrix);
-    private native long nativeFinishDepthCapture(long ctx);
-    private native long nativeUploadDepth(long ctx);
-    private native long nativeUploadStillDepth(long ctx, ByteBuffer rgb, ByteBuffer depth);
+    private native ByteBuffer nativeGetModelInput(long ctx, int pair);
+    private native ByteBuffer nativeGetModelOutput(long ctx, int pair);
+    private native long nativeCaptureDepthInput(long ctx, float[] texMatrix, int pair);
+    private native long nativeFinishDepthCapture(long ctx, int pair);
+    private native long nativeUploadDepth(long ctx, int pair);
+    private native void nativeDropDepth(long ctx, int pair);
+    private native void nativeSetDepthRate(long ctx, int perSecond, boolean video);
+    private native boolean nativeDepthDue(long ctx, boolean force);
+    private native int nativeGetDepthTarget(long ctx);
+    private native long nativeUploadStillDepth(long ctx, ByteBuffer rgb, ByteBuffer depth, int pair);
     private native void nativeResetStillDepthHistory(long ctx);
     private native void nativeSetStillDepthPending(long ctx, boolean pending);
     private native boolean nativeBindDepthContext(long ctx);
     private native void nativeUnbindDepthContext(long ctx);
+    private native boolean nativeBindDepthStageContext(long ctx);
+    private native void nativeUnbindDepthStageContext(long ctx);
     private native int nativeWaitBeginFrame(long ctx);
     private native void nativeEndFrame(long ctx, boolean newFrame, float[] texMatrix,
                                        float distance, float quadWidth, float curvature,
@@ -409,7 +437,16 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 // in the log too
                 nativeSetFileLog(FileLog.getLogPath(), FileLog.getLevel());
 
+                // The depth staging is allocated at the input size of the
+                // export this headset loads, so the route is settled here,
+                // before any of it is built. The test patterns run at the
+                // default model's size.
+                MidasDepthSource.Spec depthSpec = fastStillImageDepth ? MidasDepthSource.MIDAS : MidasDepthSource.specFor(prefs.vrDepthModel);
+                MidasDepthSource.Route depthRoute =
+                        depthSpec.route(PreferenceConfiguration.isXr2Gen1Headset());
+                DepthSize mapSize = depthRoute.size;
                 nativeCtx = nativeInit(activity, videoWidth, videoHeight, prefs.vrDepthMode,
+                        mapSize.width, mapSize.height,
                         prefs.vrDepthDebug, prefs.vrConvergence, prefs.vrDepthScale,
                         prefs.vrHandTracking, prefs.vrSharpening, prefs.enablePerfOverlay,
                         prefs.vrAmbilight, prefs.vrAmbilightLevel, prefs.vrRoomLight,
@@ -425,6 +462,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 // the panel writes back to this same instance, which is the one
                 // the decoder's stats path checks
                 prefConfig = prefs;
+                nativeSetDepthRate(nativeCtx, prefs.vrDepthRate, videoControlsEnabled);
                 restoreScreenPose();
                 startEnvironment(prefs);
 
@@ -441,7 +479,9 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 inputSurface = new Surface(surfaceTexture);
 
                 if (prefs.vrDepthMode == DEPTH_MODE_MODEL) {
-                    startDepthThread(activity);
+                    FileLog.event("depth model "+depthSpec.name+", "+depthRoute.label()
+                            +", map "+mapSize);
+                    startDepthThread(activity, depthSpec, depthRoute);
                 }
 
                 initOk[0] = true;
@@ -488,9 +528,12 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     /**
      * Inference is longer than a display frame, so it lives on its own
      * thread with its own context in the render context's share group. The
-     * frame loop hands over a captured frame and carries on submitting.
+     * frame loop hands over a captured frame and carries on submitting. The
+     * stage thread, started here once the model has loaded, turns captures
+     * into model input and model output into maps around the model's runs.
      */
-    private void startDepthThread(final Activity activity) {
+    private void startDepthThread(final Activity activity, final MidasDepthSource.Spec spec,
+                                  final MidasDepthSource.Route route) {
         depthThread = new Thread() {
             @Override
             public void run() {
@@ -506,26 +549,37 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
 
                 DepthSource source = null;
                 try {
-                    ByteBuffer input = nativeGetModelInput(nativeCtx);
-                    ByteBuffer output = nativeGetModelOutput(nativeCtx);
-                    if (input == null || output == null) {
-                        LimeLog.severe("Depth staging buffers missing");
-                        return;
+                    ByteBuffer[] inputs = new ByteBuffer[DEPTH_PAIRS];
+                    ByteBuffer[] outputs = new ByteBuffer[DEPTH_PAIRS];
+                    for (int i = 0; i < DEPTH_PAIRS; i++) {
+                        inputs[i] = nativeGetModelInput(nativeCtx, i);
+                        outputs[i] = nativeGetModelOutput(nativeCtx, i);
+                        if (inputs[i] == null || outputs[i] == null) {
+                            LimeLog.severe("Depth staging buffers missing");
+                            return;
+                        }
                     }
 
-                    source = new MidasDepthSource(fastStillImageDepth);
-                    if (!source.initialize(activity, input, output)) {
+                    MidasDepthSource model = new MidasDepthSource(route, fastStillImageDepth);
+                    source = model;
+                    if (!source.initialize(activity, inputs, outputs)) {
                         // The depth texture keeps the flat map it was
                         // initialized with, so zero disparity, and the
                         // stream stays watchable
                         LimeLog.severe("Depth source init failed, stereo will be flat");
                         return;
                     }
+                    depthLabel = spec.name+" "+route.size+" "+model.runtimeLabel();
 
+                    startDepthStage(source);
                     depthReady = true;
-                    runDepthLoop(source);
+                    runDepthModel(source);
                 } finally {
                     depthReady = false;
+                    // The stage thread uses the native context too, so it is
+                    // over before this thread is, which is what
+                    // stopDepthThread waits on
+                    stopDepthStage();
                     if (source != null) {
                         source.release();
                     }
@@ -537,16 +591,70 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         depthThread.start();
     }
 
-    private void runDepthLoop(DepthSource source) {
-        long runs = 0, skipped = 0;
-        long inferenceNs = 0, uploadNs = 0, captureNs = 0, worstNs = 0;
+    /**
+     * The stage thread, on the third context in the share group: it reads
+     * each capture back into its pair's model input and uploads each map,
+     * both while the model runs on the other pair.
+     */
+    private void startDepthStage(final DepthSource source) {
+        depthStageThread = new Thread() {
+            @Override
+            public void run() {
+                // As the depth thread, for the same reason: a map that waits
+                // on this waits a turn of the model after it
+                Process.setThreadPriority(Process.THREAD_PRIORITY_MORE_FAVORABLE);
+                if (!nativeBindDepthStageContext(nativeCtx)) {
+                    LimeLog.severe("Depth stage context would not bind, stereo will stay as it is");
+                    return;
+                }
+                try {
+                    runDepthStage(source);
+                } finally {
+                    nativeUnbindDepthStageContext(nativeCtx);
+                }
+            }
+        };
+        depthStageThread.setName("Video - XR Depth stage");
+        depthStageThread.start();
+    }
 
+    /** Ends the stage thread and waits for it, whatever it is part way through. */
+    private void stopDepthStage() {
+        Thread stage = depthStageThread;
+        if (stage == null) {
+            return;
+        }
+        synchronized (depthLock) {
+            depthExit = true;
+            depthLock.notifyAll();
+        }
+        boolean interrupted = false;
+        while (stage.isAlive()) {
+            try {
+                stage.join();
+            } catch (InterruptedException e) {
+                interrupted = true;
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        depthStageThread = null;
+    }
+
+    /** The depth thread's loop: the model, on whichever pair is staged. */
+    private void runDepthModel(DepthSource source) {
         while (true) {
-            StillDepthFrame prepared;
-            boolean captured;
-            int capturedGeneration;
+            int pair;
             synchronized (depthLock) {
-                while (!depthPending && pendingStillDepth.get() == null && !depthExit) {
+                while (true) {
+                    if (depthExit) {
+                        return;
+                    }
+                    pair = pairs.takeToRun();
+                    if (pair >= 0) {
+                        break;
+                    }
                     try {
                         depthLock.wait();
                     } catch (InterruptedException e) {
@@ -554,85 +662,151 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                         return;
                     }
                 }
-                if (depthExit) {
-                    return;
-                }
-                prepared = pendingStillDepth.getAndSet(null);
-                captured = depthPending;
-                capturedGeneration = captureStillGeneration;
-                depthPending = false;
-                depthBusy = true;
             }
+
+            boolean ok = source.estimate(pair);
+            if (fastStillImageDepth && pairStillGeneration[pair] != stillImageGeneration.get()) ok = false;
+            long inferenceNs = (long)(source.getLastInferenceMs() * 1000000.0f);
+            if (ok) {
+                lastInferenceMs = source.getLastInferenceMs();
+            }
+
+            synchronized (depthLock) {
+                pairInferenceNs[pair] = inferenceNs;
+                pairs.ran(pair, ok);
+                depthLock.notifyAll();
+            }
+        }
+    }
+
+    /**
+     * The stage thread's loop. A capture waiting to be read back goes first,
+     * since the model may be waiting on it; otherwise the oldest pair in
+     * flight, once the model is done with it, is uploaded or dropped, so the
+     * maps go up in the order their frames came.
+     */
+    private void runDepthStage(DepthSource source) {
+        long runs = 0, skipped = 0;
+        long inferenceNs = 0, uploadNs = 0, captureNs = 0, worstNs = 0;
+        long periodNs = 0, periods = 0, lastMapNs = 0;
+
+        while (true) {
+            int pair;
+            boolean finish;
+            StillDepthFrame prepared = null;
+            boolean ok = false;
+            synchronized (depthLock) {
+                while (true) {
+                    if (depthExit) {
+                        return;
+                    }
+                    if (pendingStillDepth.get() != null && !captureReservation && pairs.state(0) == DepthPairs.FREE
+                            && pairs.state(1) == DepthPairs.FREE) {
+                        prepared = pendingStillDepth.getAndSet(null);
+                        stillUploadBusy = true;
+                        pair = 0;
+                        finish = false;
+                        break;
+                    }
+                    pair = pairs.takeToFinish();
+                    if (pair >= 0) {
+                        finish = true;
+                        break;
+                    }
+                    pair = pairs.takeToUpload();
+                    if (pair >= 0) {
+                        ok = pairs.made(pair);
+                        finish = false;
+                        break;
+                    }
+                    try {
+                        depthLock.wait();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
+
             if (prepared != null) {
                 if (prepared.generation == stillImageGeneration.get()) {
-                    long upload = nativeUploadStillDepth(nativeCtx, prepared.rgb, prepared.depth);
-                    // Navigation can race an upload already executing on this
-                    // thread. Only expose it if its colour generation is still
-                    // current after the GL upload finishes.
+                    long preparedUploadNs = nativeUploadStillDepth(nativeCtx, prepared.rgb, prepared.depth, pair);
                     if (prepared.generation == stillImageGeneration.get()
                             && prepared.generation == latchedStillColorGeneration) {
+                        LimeLog.info("Prepared static depth published in " + preparedUploadNs / 1000000 + " ms");
                         publishedStillGeneration = prepared.generation;
                         preparedStillDepthActive = true;
                         nativeSetStillDepthPending(nativeCtx, false);
                         forceVideoRedraw.set(true);
                         publishedFrameIndex = videoFrameIndex;
                         publishedFrameNs = System.nanoTime();
-                        LimeLog.info("Prepared static depth published in "
-                                + upload / 1000000 + " ms");
-                    } else {
-                        nativeSetStillDepthPending(nativeCtx, true);
-                    }
+                    } else nativeSetStillDepthPending(nativeCtx, true);
                 }
-                synchronized (depthLock) { depthBusy = false; }
-                continue;
-            }
-            if (!captured) {
-                synchronized (depthLock) { depthBusy = false; }
+                synchronized (depthLock) { stillUploadBusy = false; depthLock.notifyAll(); }
                 continue;
             }
 
-            long start = System.nanoTime();
+            if (finish) {
+                // The frame loop only queued the readback. This is where it
+                // is waited on and turned into the model input, on a thread
+                // with no frame to miss, while the model runs the other pair.
+                long start = System.nanoTime();
+                long finishNs = nativeFinishDepthCapture(nativeCtx, pair);
+                synchronized (depthLock) {
+                    pairStartNs[pair] = start;
+                    pairFinishNs[pair] = finishNs;
+                    pairInferenceNs[pair] = 0;
+                    // With nothing to run the model on, it waits its turn
+                    // among the maps to be dropped
+                    pairs.finished(pair, finishNs >= 0);
+                    depthLock.notifyAll();
+                }
+                continue;
+            }
+
             long upload = 0;
-            // The frame loop only queued the readback. This is where it is
-            // waited on and turned into the model input, on the thread that
-            // has no frame to miss.
-            long finish = nativeFinishDepthCapture(nativeCtx);
-            boolean ok = finish >= 0 && source.estimate();
-            if (ok && fastStillImageDepth
-                    && capturedGeneration != stillImageGeneration.get()) {
-                ok = false;
-            }
+            if (fastStillImageDepth && pairStillGeneration[pair] != stillImageGeneration.get()) ok = false;
             if (ok) {
-                boolean firstDepth = publishedFrameNs == 0;
-                if (fastStillImageDepth && capturedGeneration != publishedStillGeneration) {
+                if (fastStillImageDepth && pairStillGeneration[pair] != publishedStillGeneration) {
                     nativeResetStillDepthHistory(nativeCtx);
-                    publishedStillGeneration = capturedGeneration;
+                    publishedStillGeneration = pairStillGeneration[pair];
                 }
-                upload = nativeUploadDepth(nativeCtx);
-                publishedFrameIndex = captureFrameIndex;
-                publishedFrameNs = captureFrameNs;
-                if (firstDepth) {
-                    LimeLog.info("XR first depth published at " + System.nanoTime());
-                }
+                upload = nativeUploadDepth(nativeCtx, pair);
+                publishedFrameIndex = pairFrameIndex[pair];
+                publishedFrameNs = pairFrameNs[pair];
             }
+            else {
+                nativeDropDepth(nativeCtx, pair);
+            }
+            long end = System.nanoTime();
+            long capture = pairCaptureNs[pair] + Math.max(0, pairFinishNs[pair]);
+            long inference = pairInferenceNs[pair];
+            // From the readback being finished to the map going up, the waits
+            // for the model and for this thread included
+            long total = end - pairStartNs[pair];
 
             synchronized (depthLock) {
-                depthBusy = false;
+                pairs.freed(pair);
                 skipped += skippedFrames;
                 skippedFrames = 0;
+                depthLock.notifyAll();
             }
 
             if (!ok) {
                 continue;
             }
 
-            captureNs += lastCaptureNs + finish;
-            inferenceNs += (long)(source.getLastInferenceMs() * 1000000.0f);
-            lastInferenceMs = source.getLastInferenceMs();
+            long gap = lastMapNs == 0 ? 0 : end - lastMapNs;
+            lastMapNs = end;
+            captureNs += capture;
+            inferenceNs += inference;
             uploadNs += upload;
-            long total = System.nanoTime() - start;
             if (total > worstNs) {
                 worstNs = total;
+            }
+            if (gap > 0 && gap < DEPTH_PERIOD_GAP_NS) {
+                periodNs += gap;
+                periods++;
             }
             if (++runs == DEPTH_STATS_INTERVAL) {
                 LimeLog.info("Depth stage ("+(source.isGpuAccelerated() ? "GPU" : "CPU")
@@ -640,13 +814,22 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                         +" ms, inference "+msPer(inferenceNs, runs)
                         +" ms, upload "+msPer(uploadNs, runs)
                         +" ms, worst "+msPer(worstNs, 1)
-                        +" ms, frames skipped while busy "+skipped);
+                        +" ms, period "+(periods == 0 ? "0" : msPer(periodNs, periods))
+                        +" ms, "+mapsPerSecond(periodNs, periods)
+                        +" maps/s, frames skipped while busy "+skipped);
                 lastDepthSkips = (int)skipped;
+                lastMapsPerSecond = periodNs <= 0 ? 0.0f : (float)(periods * 1e9 / periodNs);
                 runs = 0;
                 skipped = 0;
-                captureNs = inferenceNs = uploadNs = worstNs = 0;
+                periods = 0;
+                captureNs = inferenceNs = uploadNs = worstNs = periodNs = 0;
             }
         }
+    }
+
+    /** Maps a second over that many gaps between maps, one decimal, 0 for none. */
+    private static String mapsPerSecond(long periodNs, long periods) {
+        return periodNs <= 0 ? "0" : String.format("%.1f", periods * 1e9 / periodNs);
     }
 
     private void stopDepthThread() {
@@ -659,7 +842,8 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         }
         // The context is freed the moment this returns, and the thread uses
         // it, so a slow inference is waited out however long it takes rather
-        // than left running on memory that is about to go
+        // than left running on memory that is about to go. The stage thread
+        // uses it too, and the depth thread waits that out before it ends.
         boolean interrupted = false;
         try {
             depthThread.join(2000);
@@ -698,7 +882,6 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         boolean eyeSwap = prefs.vrEyeSwap;
         boolean pointer = prefs.vrPointer;
         boolean gaze = prefs.vrGaze;
-        int cadence = Math.max(1, prefs.vrInferenceCadence);
 
         long ageFrames = 0, ageNs = 0, ageSamples = 0, worstAgeNs = 0;
 
@@ -730,7 +913,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 if (colorGeneration >= 0) latchedStillColorGeneration = colorGeneration;
 
                 if (depthReady) {
-                    if ((videoFrameIndex % cadence) == 0
+                    if ((fastStillImageDepth || nativeDepthDue(nativeCtx, false))
                             && (!fastStillImageDepth || !preparedStillDepthActive)) {
                         startDepthCapture();
                     }
@@ -1410,27 +1593,35 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     }
 
     /**
-     * Asks the GPU for a downscaled copy of the frame just latched and wakes
-     * the depth thread. Only this stays on the frame loop, since it has to
-     * sample the video texture this context owns, and it only queues work:
-     * the depth thread waits for the pixels itself, in nativeFinishDepthCapture.
+     * Asks the GPU for a downscaled copy of the frame just latched, into a
+     * free pair, and wakes the stage thread. Only this stays on the frame
+     * loop, since it has to sample the video texture this context owns, and
+     * it only queues work: the stage thread waits for the pixels itself, in
+     * nativeFinishDepthCapture.
      */
     private void startDepthCapture() {
+        int pair;
         synchronized (depthLock) {
-            if (depthPending || depthBusy) {
+            if (stillUploadBusy || pendingStillDepth.get() != null) return;
+            pair = pairs.forCapture();
+            if (pair < 0) {
                 skippedFrames++;
                 return;
             }
+            captureReservation = true;
         }
 
-        lastCaptureNs = nativeCaptureDepthInput(nativeCtx, texMatrix);
-        captureFrameIndex = videoFrameIndex;
-        captureFrameNs = System.nanoTime();
-        captureStillGeneration = stillImageGeneration.get();
+        // Still free as far as the lock knows, but only this thread hands out
+        // free pairs, so it is this capture's until it is marked below
+        pairCaptureNs[pair] = nativeCaptureDepthInput(nativeCtx, texMatrix, pair);
+        pairFrameIndex[pair] = videoFrameIndex;
+        pairFrameNs[pair] = System.nanoTime();
+        pairStillGeneration[pair] = stillImageGeneration.get();
 
         synchronized (depthLock) {
-            depthPending = true;
-            depthLock.notify();
+            pairs.captured(pair);
+            captureReservation = false;
+            depthLock.notifyAll();
         }
     }
 
@@ -1503,6 +1694,8 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("Warp GPU: %.2f ms", warpMs));
         if (depthReady) {
+            sb.append('\n').append(String.format(Locale.US, "Depth %.1f/s (target %d)", lastMapsPerSecond, nativeGetDepthTarget(nativeCtx)));
+            sb.append('\n').append("Depth model: ").append(depthLabel);
             sb.append('\n').append(String.format("Depth inference: %.1f ms", lastInferenceMs));
             sb.append('\n').append(String.format("Depth age: %.0f ms", lastDepthAgeMs));
             sb.append('\n').append("Depth frames skipped: ").append(lastDepthSkips);

@@ -276,4 +276,5 @@
     <string name="summary_checkbox_gamepad_motion_fallback">如果您連線的手把或 Android 版本不支援手把感測器，請使用裝置內建的動態感測器。
 \n注意：啟用此選項可能會導致您的手把在主機被辨識為 PlayStation 控制器。</string>
     <string name="title_checkbox_gamepad_motion_fallback">模擬手把動態感測器支援</string>
+    <string name="vr_depth_source_zipdepth">ZipDepth 視訊 3D（推薦）</string>
 </resources>

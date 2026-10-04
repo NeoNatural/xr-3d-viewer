@@ -91,14 +91,14 @@ const char* const MOTION_FRAGMENT_SRC =
     "uniform sampler2D u_depth;\n"
     "uniform mat4 u_texmatrix;\n"
     "out vec4 fragColor;\n"
-    "const float N = 256.0;\n"
+    "uniform vec2 u_depthSize;\n"
     "const int R = 8;\n"
     "vec3 currentAt(vec2 uv) {\n"
     "    return texture(u_texture, (u_texmatrix * vec4(uv, 0.0, 1.0)).xy).rgb;\n"
     "}\n"
     "void main() {\n"
-    "    vec2 h = vec2(1.0 / N, 0.0);\n"
-    "    vec2 v = vec2(0.0, 1.0 / N);\n"
+    "    vec2 h = vec2(1.0 / u_depthSize.x, 0.0);\n"
+    "    vec2 v = vec2(0.0, 1.0 / u_depthSize.y);\n"
     "    vec3 c0 = currentAt(v_plain);\n"
     "    vec3 cx0 = currentAt(v_plain - h);\n"
     "    vec3 cx1 = currentAt(v_plain + h);\n"
@@ -109,7 +109,7 @@ const char* const MOTION_FRAGMENT_SRC =
     "    for (int dy = -R; dy <= R; dy++) {\n"
     "        for (int dx = -R; dx <= R; dx++) {\n"
     "            vec2 p = vec2(float(dx), float(dy));\n"
-    "            vec2 uv = clamp(v_plain + p / N, vec2(0.0), vec2(1.0));\n"
+    "            vec2 uv = clamp(v_plain + p / u_depthSize, vec2(0.0), vec2(1.0));\n"
     "            vec3 d0 = c0 - texture(u_depth, uv).rgb;\n"
     "            vec3 d1 = cx0 - texture(u_depth, clamp(uv - h, vec2(0.0), vec2(1.0))).rgb;\n"
     "            vec3 d2 = cx1 - texture(u_depth, clamp(uv + h, vec2(0.0), vec2(1.0))).rgb;\n"
@@ -136,8 +136,10 @@ const char* const MOTION_FRAGMENT_SRC =
 // Each output pixel weights the 5x5 low resolution depth neighbourhood by how
 // closely each neighbour's colour matches the colour here, so the depth edge
 // snaps to the colour edge instead of straddling it. Measured on a captured
-// frame this takes the edge from 15 px to 5 px, which is the resolution limit
-// of a 256x256 source rather than of this filter.
+// frame from a 256 square map this took the edge from 15 px to 5 px, which is
+// the resolution limit of the source rather than of this filter.
+//
+// u_depthSize is the map's width and height, which is the session's.
 //
 // The guide rides in the rgb of the depth texture, so it is by construction
 // the same frame the depth was inferred from. u_sigmaR trades edge snapping
@@ -154,15 +156,15 @@ const char* const UPSAMPLE_FRAGMENT_SRC =
     "uniform mat4 u_texmatrix;\n"
     "uniform float u_sigmaR;\n"
     "uniform float u_sharp;\n"
+    "uniform vec2 u_depthSize;\n"
     "out vec4 fragColor;\n"
-    "const float N = 256.0;\n"
     "const float SIGMA_S = 1.5;\n"
     "const float FLAT = 0.05;\n"
     "void main() {\n"
     "    vec3 hi = texture(u_texture, (u_texmatrix * vec4(v_plain, 0.0, 1.0)).xy).rgb;\n"
     "    vec3 motion = texture(u_motion, v_plain).rgb;\n"
     "    vec2 flow = (motion.rg - 0.5) * 16.0 * motion.b;\n"
-    "    vec2 lp = v_plain * N + flow - 0.5;\n"
+    "    vec2 lp = v_plain * u_depthSize + flow - 0.5;\n"
     "    ivec2 base = ivec2(floor(lp));\n"
     "    float num = 0.0;\n"
     "    float den = 0.0;\n"
@@ -170,7 +172,7 @@ const char* const UPSAMPLE_FRAGMENT_SRC =
     "    float dhi = 0.0;\n"
     "    for (int dy = -2; dy <= 2; dy++) {\n"
     "        for (int dx = -2; dx <= 2; dx++) {\n"
-    "            ivec2 q = clamp(base + ivec2(dx, dy), ivec2(0), ivec2(int(N) - 1));\n"
+    "            ivec2 q = clamp(base + ivec2(dx, dy), ivec2(0), ivec2(u_depthSize) - 1);\n"
     "            vec4 s = texelFetch(u_depth, q, 0);\n"
     "            vec2 off = vec2(q) - lp;\n"
     "            float ws = exp(-dot(off, off) / (2.0 * SIGMA_S * SIGMA_S));\n"
@@ -256,9 +258,11 @@ const char* const OFFSET_FRAGMENT_SRC =
     "    fragColor = vec4(result / (2.0 * float(reach)) + 0.5, 0.0, 1.0);\n"
     "}\n";
 
-// Feeds the depth model. The video is far larger than 256x256, so a single
+// Feeds the depth model. The video is far larger than the map, so a single
 // bilinear tap per output pixel aliases badly and the depth map crawls with
 // it. A 4x4 box over each destination pixel is still nothing on this GPU.
+// u_texel is one destination texel on each axis, so the box covers exactly
+// that at any map size.
 const char* const DOWNSCALE_FRAGMENT_SRC =
     "#version 300 es\n"
     "#extension GL_OES_EGL_image_external_essl3 : require\n"
@@ -266,12 +270,13 @@ const char* const DOWNSCALE_FRAGMENT_SRC =
     "in vec2 v_plain;\n"
     "uniform samplerExternalOES u_texture;\n"
     "uniform mat4 u_texmatrix;\n"
+    "uniform vec2 u_texel;\n"
     "out vec4 fragColor;\n"
     "void main() {\n"
     "    vec3 sum = vec3(0.0);\n"
     "    for (int y = 0; y < 4; y++) {\n"
     "        for (int x = 0; x < 4; x++) {\n"
-    "            vec2 off = (vec2(float(x), float(y)) - 1.5) * (0.25 / 256.0);\n"
+    "            vec2 off = (vec2(float(x), float(y)) - 1.5) * (0.25 * u_texel);\n"
     "            vec2 tc = v_plain + off;\n"
     "            sum += texture(u_texture, (u_texmatrix * vec4(tc, 0.0, 1.0)).xy).rgb;\n"
     "        }\n"

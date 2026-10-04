@@ -141,8 +141,9 @@
     </string-array>
 
     <string-array name="vr_depth_source_names">
+        <item>@string/vr_depth_source_zipdepth</item>
+        <item>MiDaS Video 3D</item>
         <item>Off</item>
-        <item>V1.0 - MiDaS Based 3D</item>
         <item>Test pattern: flat plane</item>
         <item>Test pattern: horizontal ramp</item>
         <item>Test pattern: center blob</item>
@@ -150,8 +151,9 @@
         <item>Test pattern: shift measurement</item>
     </string-array>
     <string-array name="vr_depth_source_values" translatable="false">
-        <item>off</item>
+        <item>zipdepth</item>
         <item>model</item>
+        <item>off</item>
         <item>flat</item>
         <item>ramp</item>
         <item>blob</item>

@@ -1,6 +1,7 @@
 // The OpenXR instance, session and swapchains, the session state machine,
 // and the JNI entry points that bring the renderer up and take it down.
 #include "xr_renderer.h"
+#include "xr_depthmap.h"
 
 int checkXr(XrResult res, const char* what) {
     if (XR_FAILED(res)) {
@@ -474,32 +475,31 @@ static void pollEvents(XrCtx* ctx) {
 static void destroyCtx(JNIEnv* env, XrCtx* ctx) {
     destroyXrInput(ctx);
 
-    // The depth thread has been joined by now, but a slot published after the
-    // frame loop last sampled it still carries a fence nothing waited on
+    // The depth threads have been joined by now, but a slot published after
+    // the frame loop last sampled it still carries a fence nothing waited on,
+    // and so does a capture the stage thread never got to
     for (int i = 0; i < DEPTH_TEX_COUNT; i++) {
         if (ctx->depthFences[i] != NULL) {
             glDeleteSync(ctx->depthFences[i]);
         }
     }
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < DEPTH_PAIRS; i++) {
         if (ctx->captureFences[i] != NULL) {
             glDeleteSync(ctx->captureFences[i]);
         }
     }
-    glDeleteBuffers(2, ctx->depthPbos);
+    glDeleteBuffers(DEPTH_PAIRS, ctx->depthPbos);
     glDeleteBuffers(1, &ctx->ambiDetectPbo);
-    free(ctx->modelInput);
-    free(ctx->modelOutput);
+    for (int i = 0; i < DEPTH_PAIRS; i++) {
+        free(ctx->modelInput[i]);
+        free(ctx->modelOutput[i]);
+    }
     free(ctx->depthUploadBuf);
-    free(ctx->depthEma);
+    free(ctx->depthNorm);
+    free(ctx->depthTau);
     free(ctx->depthLow);
     free(ctx->depthScratch);
     free(ctx->depthColSums);
-    free(ctx->depthMotionPrevious);
-    free(ctx->depthMotionCurrent);
-    free(ctx->depthMotionDx);
-    free(ctx->depthMotionDy);
-    free(ctx->depthMotionConfidence);
 
     // Destroying the context below would take these anyway. Said explicitly so
     // the glow's resources go together with the swapchain it draws into.
@@ -578,6 +578,14 @@ static void destroyCtx(JNIEnv* env, XrCtx* ctx) {
 
     if (ctx->eglDisplay != EGL_NO_DISPLAY) {
         eglMakeCurrent(ctx->eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        // The stage thread destroys its own context as it ends, so these are
+        // only left when the model never loaded and it never started
+        if (ctx->depthStagePbuffer != EGL_NO_SURFACE) {
+            eglDestroySurface(ctx->eglDisplay, ctx->depthStagePbuffer);
+        }
+        if (ctx->depthStageContext != EGL_NO_CONTEXT) {
+            eglDestroyContext(ctx->eglDisplay, ctx->depthStageContext);
+        }
         if (ctx->eglPbuffer != EGL_NO_SURFACE) {
             eglDestroySurface(ctx->eglDisplay, ctx->eglPbuffer);
         }
@@ -596,7 +604,8 @@ static void destroyCtx(JNIEnv* env, XrCtx* ctx) {
 JNIEXPORT jlong JNICALL
 Java_com_limelight_binding_video_XrRenderer_nativeInit(JNIEnv* env, jobject thiz,
                                                        jobject activity, jint width, jint height,
-                                                       jint stereoMode, jboolean depthDebug,
+                                                       jint stereoMode, jint depthWidth,
+                                                       jint depthHeight, jboolean depthDebug,
                                                        jint convergence, jint depthScale,
                                                        jboolean handTracking, jint sharpenMode,
                                                        jboolean perfOverlay, jboolean ambilight,
@@ -616,13 +625,25 @@ Java_com_limelight_binding_video_XrRenderer_nativeInit(JNIEnv* env, jobject thiz
     ctx->videoHeight = height;
     ctx->videoDisplayAspect = (float)height / (float)width;
     ctx->stereoMode = stereoMode;
+    // The size the depth map runs at, from the model Java picked. Everything
+    // the depth path allocates is sized from it, so it is settled before any
+    // of that is built.
+    if (!depthSizeOk(depthWidth, depthHeight)) {
+        LOGW("depth size %dx%d out of range, using %d square", depthWidth, depthHeight,
+             DEPTH_TEX_SIZE_DEFAULT);
+        depthWidth = DEPTH_TEX_SIZE_DEFAULT;
+        depthHeight = DEPTH_TEX_SIZE_DEFAULT;
+    }
+    ctx->depthTexW = depthWidth;
+    ctx->depthTexH = depthHeight;
     ctx->depthDebug = depthDebug;
     ctx->sessionState = XR_SESSION_STATE_UNKNOWN;
-    // Depth arrives at about 20 Hz, so 0.6 settles in roughly two updates.
-    // The range moves much more slowly on purpose, it should track the scene
-    // rather than the frame.
-    ctx->depthAlpha = 0.60f;
-    ctx->rangeAlpha = 0.15f;
+    // The map is averaged per texel over 30 ms of real time, and the range it
+    // is normalised against over 150 ms, whatever rate the model runs at. A
+    // scene cut starts both again rather than smoothing across it.
+    ctx->depthTauMs = DEPTH_TAU_DEFAULT_MS;
+    ctx->rangeTauMs = DEPTH_RANGE_TAU_DEFAULT_MS;
+    ctx->depthCutLevel = 1;
     // 0.25 measured best on a captured frame: same 5 px edge as tighter
     // values with a tenth of the speckle
     ctx->upsampleSigmaR = 0.25f;
@@ -803,6 +824,15 @@ Java_com_limelight_binding_video_XrRenderer_nativeWaitBeginFrame(JNIEnv* env, jo
         return FRAME_EXIT;
     }
 
+    ctx->depthFrameStartNs = nowNs();
+    ctx->depthDisplayPeriod = frameState.predictedDisplayPeriod;
+    if (ctx->depthVideoSession && ctx->depthPreviousDisplayTime && ctx->depthDisplayPeriod > 0) {
+        long missed = (frameState.predictedDisplayTime - ctx->depthPreviousDisplayTime)
+                / ctx->depthDisplayPeriod - 1;
+        rateBudgetMissed(&ctx->depthBudget, missed);
+    }
+    ctx->depthPreviousDisplayTime = frameState.predictedDisplayTime;
+    if (!frameState.shouldRender) rateBudgetStart(&ctx->depthBudget, nowNs(), RATE_SETTLE_WINDOWS);
     ctx->predictedDisplayTime = frameState.predictedDisplayTime;
     ctx->shouldRender = frameState.shouldRender;
     return FRAME_RENDER;

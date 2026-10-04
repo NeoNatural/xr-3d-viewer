@@ -37,6 +37,8 @@
 #include "xr_math.h"
 #include "xr_shared.h"
 #include "xr_media_stick.h"
+#include "xr_depthmap.h"
+#include "xr_rate.h"
 
 #define TAG "moonlight-xr"
 
@@ -325,13 +327,17 @@ static inline long nowNs(void) {
 #define ROOM_DIM_MIN 0.10f
 #define ROOM_DIM_MAX 2.0f
 
-// Three depth textures rather than two: the depth thread advances through
+// Three depth textures rather than two: the stage thread advances through
 // them in a fixed rotation, so a slot it is about to overwrite was last handed
 // to the frame loop a full rotation ago rather than one. One inference dwarfs
 // anything the frame loop could still have in flight from that slot by then.
 #define DEPTH_TEX_COUNT 3
 
-// Generous on purpose: the depth thread has no per frame deadline, and a
+// The least time between two scene cut lines in the log, so a stream that
+// cuts on every beat cannot flood it. The next line says how many went unsaid.
+#define DEPTH_CUT_LOG_NS 2000000000L
+
+// Generous on purpose: the stage thread has no per frame deadline, and a
 // short timeout here would only trade a hung capture for a torn one
 #define CAPTURE_FENCE_TIMEOUT_NS 500000000ull
 
@@ -366,8 +372,6 @@ typedef struct XrCompositionLayerSettingsFB {
 // without a rebuild. Each is an integer percent of the real value. Read by
 // debug builds only: a release build never polls the property store, so a
 // knob left set from a test session cannot override the panel in one.
-#define PROP_DEPTH_ALPHA "debug.moonlight.depthalpha"
-#define PROP_RANGE_ALPHA "debug.moonlight.rangealpha"
 #define PROP_UPSAMPLE "debug.moonlight.upsample"
 #define PROP_UPSAMPLE_SIGMA "debug.moonlight.upsamplesigma"
 #define PROP_DEPTH_SHARP "debug.moonlight.depthsharp"
@@ -397,9 +401,18 @@ typedef struct XrCompositionLayerSettingsFB {
 #define PROP_ROOM_SCALE "debug.moonlight.roomscale"
 #define PROP_ROOM_DIM "debug.moonlight.roomdim"
 #define PROP_TB_SWAP "debug.moonlight.tbswap"
+// Milliseconds, the time constants of the per texel depth average and of the
+// range the map is normalised against. 0 turns either off, so each map
+// replaces the last or is normalised against its own range.
+#define PROP_DEPTH_TAU "debug.moonlight.depth_tau"
+#define PROP_RANGE_TAU "debug.moonlight.range_tau"
+// The scene cut detector: 0 off, 1 on as every build ships, 2 on with a line
+// in the log for every capture
+#define PROP_DEPTH_CUT "debug.moonlight.depth_cut"
 
 // Radius of the low pass that splits the depth map into an overall shape and
-// the local detail on top of it. About a tenth of the frame.
+// the local detail on top of it. About a tenth of the frame, in texels of a
+// 256 square map, and scaled with the map on each axis.
 #define DEPTH_LOWPASS_RADIUS 11
 
 typedef struct {
@@ -444,16 +457,20 @@ typedef struct {
     // wide and each eye gets its own warped copy of the frame
     int stereoMode;
     int depthDebug;
-    // Triple buffered: the frame loop samples one slot while the depth thread
+    // The depth map's size for this session, which is the model input's.
+    // Set by nativeInit before any GL init and fixed from then on.
+    int depthTexW;
+    int depthTexH;
+    // Triple buffered: the frame loop samples one slot while the stage thread
     // rotates through the rest, so neither ever blocks on the other. Which
     // slot the frame loop reads is its own to write.
     GLuint depthTextures[DEPTH_TEX_COUNT];
     int depthReadIndex;
     atomic_int stillDepthPending;
-    // The slot the depth thread's next upload lands in. Its own to read and
+    // The slot the stage thread's next upload lands in. Its own to read and
     // write, so nothing guards it.
     int depthWriteIndex;
-    // Published by the depth thread together with the fence for that slot,
+    // Published by the stage thread together with the fence for that slot,
     // and adopted by the frame loop once it notices a new value. The release
     // and acquire on this one word are what keep the frame loop from seeing
     // the index before the fence that has to come with it.
@@ -463,54 +480,68 @@ typedef struct {
     GLsync depthFences[DEPTH_TEX_COUNT];
 
     // Second context in the same share group for the depth thread. Inference
-    // takes longer than a display frame, so it cannot run on the frame loop
+    // takes longer than a display frame, so it cannot run on the frame loop.
+    // Only the model runs on it.
     EGLContext depthContext;
     EGLSurface depthPbuffer;
+    // Third, for the stage thread, which turns each readback into a model
+    // input and uploads each map while the model runs on the other pair
+    EGLContext depthStageContext;
+    EGLSurface depthStagePbuffer;
 
-    // Depth model staging. The frame is downscaled to DEPTH_TEX_SIZE on the
-    // GPU, read back, run through the model in Java, and the result goes
-    // back up into the depth texture
+    // Depth model staging. The frame is downscaled to depthTexW by depthTexH
+    // on the GPU, read back, run through the model in Java, and the result
+    // goes back up into the depth texture
     GLuint downscaleProgram;
     GLint downscaleTexMatrixUniform;
     GLuint downscaleTexture;
     GLuint downscaleFbo;
-    // The readback goes through a pixel buffer, so the frame loop only queues
-    // the transfer, and the depth thread waits on the fence and maps it right
-    // before the model needs it. Two, ping ponged, though the handoff guard
-    // means only one is ever in flight: the spare is headroom.
-    GLuint depthPbos[2];
-    int captureIndex;
-    GLsync captureFences[2];
-    float* modelInput;
-    float* modelOutput;
+    // One set per pair. The frame loop queues a readback into a pair's pixel
+    // buffer and leaves a fence, the stage thread waits on it and maps the
+    // buffer into the pair's model input, and the model writes the pair's
+    // output. Java hands the pairs out, so each has one owner at a time.
+    GLuint depthPbos[DEPTH_PAIRS];
+    GLsync captureFences[DEPTH_PAIRS];
+    float* modelInput[DEPTH_PAIRS];
+    float* modelOutput[DEPTH_PAIRS];
+    // The pair the live map was made from, for the frame capture only
+    atomic_int depthLastPair;
     unsigned char* depthUploadBuf;
 
-    // Temporal smoothing. The normalization range is smoothed separately from
-    // the map itself: a single outlier pixel moving the min or max used to
-    // shift the whole mapping, which pumps the entire image.
-    float* depthEma;
+    // The map normalised to 0..1, and the range it was normalised against,
+    // smoothed on its own over real time: a single outlier pixel moving the
+    // min or max used to shift the whole mapping, which pumps the entire
+    // image. The range and the time of the map it last took belong to the
+    // stage thread.
+    float* depthNorm;
     float* depthLow;
     float* depthScratch;
     float* depthColSums;
-    // Half-resolution luminance guides and a coarse backward motion field
-    // align the previous depth before temporal filtering. This avoids leaving
-    // the old silhouette behind when an object or the camera moves.
-    float* depthMotionPrevious;
-    float* depthMotionCurrent;
-    float* depthMotionDx;
-    float* depthMotionDy;
-    float* depthMotionConfidence;
-    int depthMotionValid;
-    int depthMotionLogFrames;
-    float depthMotionConfidenceTotal;
     float depthGlobal;
     float depthLocal;
-    int depthEmaValid;
-    float smoothLo;
-    float smoothHi;
-    int rangeValid;
-    float depthAlpha;
-    float rangeAlpha;
+    DepthRange depthRange;
+    long rangeNs;
+    // The model output averaged per texel over real time, ahead of the range
+    // and the normalisation, so raw model flicker does not reach the eyes.
+    // The stage thread's too.
+    float* depthTau;
+    int depthTauValid;
+    long depthTauNs;
+    // Time constants in milliseconds, 0 for none. Set at init and only moved
+    // by the debug knobs.
+    int depthTauMs;
+    int rangeTauMs;
+    // Scene cuts, found on the model input before the model runs. A jump
+    // starts the per texel average again and a confirmed cut the range, at
+    // the map made from the capture it was found on (DepthResets). All but
+    // the level belong to the stage thread. The level is 0 off, 1 on, and 2
+    // on with a line per capture, which only a debug build can ask for.
+    int depthCutLevel;
+    DepthCut depthCut;
+    DepthResets depthResets;
+    long depthCutChecks;
+    long depthCutLogNs;
+    int depthCutUnlogged;
 
     // Edge aware upsample of the depth map, quarter of the video size
     GLuint motionProgram;
@@ -701,6 +732,13 @@ typedef struct {
     XrSessionState sessionState;
     int sessionRunning;
     int exitRequested;
+    DepthGate depthGate;
+    DepthGovernor depthGov;
+    RateBudget depthBudget;
+    int depthVideoSession;
+    int64_t depthFrameStartNs;
+    XrTime depthPreviousDisplayTime;
+    XrDuration depthDisplayPeriod;
     XrTime predictedDisplayTime;
     int shouldRender;
     int everRendered;
@@ -1123,7 +1161,7 @@ int linkProgram(GLuint* out, const char* fragmentSrc, const char* what);
 int initGl(XrCtx* ctx);
 void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation);
 
-// xr_depth.c: the depth model staging and the depth thread's uploads
+// xr_depth.c: the depth model staging and the stage thread's uploads
 int initDepthModel(XrCtx* ctx);
 void waitForDepthSlot(XrCtx* ctx);
 

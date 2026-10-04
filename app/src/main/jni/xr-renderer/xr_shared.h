@@ -33,11 +33,27 @@
 // Draws a synthetic bar through the warp and reads back where it landed in
 // each eye, so the shift direction is measured rather than eyeballed
 #define DEPTH_MODE_SHIFTTEST 5
-// Real depth from the MiDaS model, run in Java on LiteRT
+// Real depth from a model, ZipDepth or MiDaS, run in Java on LiteRT
 #define DEPTH_MODE_MODEL 6
 
-// The depth model's input and output are square at this size
-#define DEPTH_TEX_SIZE 256
+// The depth map is the size of the model input it is made from, which Java
+// picks per session from the model and the headset and hands to nativeInit:
+// 512x288 for ZipDepth on a Gen 2 headset, 256 square for MiDaS and for the
+// Gen 1 ZipDepth. The default is what a size out of range falls back to, and
+// the maxima are the largest map any route runs at.
+#define DEPTH_TEX_SIZE_DEFAULT 256
+#define DEPTH_TEX_W_MAX 512
+#define DEPTH_TEX_H_MAX 288
+
+#define DEPTH_RATE_MIN 5
+#define DEPTH_RATE_MAX 45
+#define DEPTH_RATE_DEFAULT 20
+#define DEPTH_RATE_GEN1 12
+
+// Sets of depth staging a capture travels in: the readback, the model input
+// it is turned into and the output the model writes. Two, so one capture can
+// be read back and the last map uploaded while the model runs the other.
+#define DEPTH_PAIRS 2
 
 // Enough for a dozen lines of stats without being big enough to matter
 #define OVERLAY_WIDTH 768

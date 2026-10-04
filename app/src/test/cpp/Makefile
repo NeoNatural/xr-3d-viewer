@@ -9,7 +9,7 @@ SRC := ../../main/jni/xr-renderer
 INCLUDES := -Istubs -I$(SRC)
 OUT := build
 
-TESTS := $(OUT)/test_math $(OUT)/test_depthmap $(OUT)/test_media_stick
+TESTS := $(OUT)/test_rate $(OUT)/test_math $(OUT)/test_depthmap $(OUT)/test_media_stick
 
 .PHONY: test clean
 
@@ -20,7 +20,7 @@ $(OUT)/test_math: test_math.c check.h $(SRC)/xr_math.c $(SRC)/xr_math.h
 	@mkdir -p $(OUT)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_math.c $(SRC)/xr_math.c -lm
 
-$(OUT)/test_depthmap: test_depthmap.c check.h $(SRC)/xr_depthmap.c $(SRC)/xr_depthmap.h
+$(OUT)/test_depthmap: test_depthmap.c check.h $(SRC)/xr_depthmap.c $(SRC)/xr_depthmap.h $(SRC)/xr_shared.h
 	@mkdir -p $(OUT)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_depthmap.c $(SRC)/xr_depthmap.c -lm
 
@@ -30,3 +30,7 @@ $(OUT)/test_media_stick: test_media_stick.c check.h $(SRC)/xr_media_stick.h
 
 clean:
 	rm -rf $(OUT)
+
+$(OUT)/test_rate: test_rate.c check.h $(SRC)/xr_rate.c $(SRC)/xr_rate.h
+	@mkdir -p $(OUT)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_rate.c $(SRC)/xr_rate.c -lm

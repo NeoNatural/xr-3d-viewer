@@ -137,3 +137,20 @@ The browser Back icon uses the downloaded Lucide arrow-left SVG converted to an 
 ## Root return and hovering media controls
 
 Both browser Back icons now return to `PcView` at their root via CLEAR_TOP/SINGLE_TOP, even when the debug browser was launched directly without a home activity beneath it. At deeper levels they retain parent navigation. The top image/video control quad is submitted only while its region is hovered and no canvas grab or modal is active; its hit testing remains active while hidden, like the lower toolbar. Video controls occupy 95% of screen width (formerly 62%), with a 1536×128 texture to preserve approximately the former physical height. The seek track spans 61% of that bar (formerly 44%), giving roughly 2.1× the old physical seek length. Button artwork centers derive from the shared hit zones instead of fixed 1024-pixel coordinates.
+
+
+## Video ZipDepth port (2026-10-04)
+
+Scope: selectively port video depth changes from Gilleece/moonlight-android-xr through upstream `686429ab8c91ad1c8bb128a7c7e3188802c3bcf4`. Preserve Media3 hardware decode to the renderer Surface, existing SMB transport, media UI, and still-image Depth Anything V2 inference/prefetch.
+
+Video now defaults to the upstream ZipDepth 512x288 FP16 LiteRT GPU export on Quest 3. MiDaS remains selectable. Per-session map dimensions, cached GPU kernels, two staging pairs and a separate GL stage thread allow capture readback/upload to overlap model inference. Raw-depth smoothing uses elapsed time (30 ms), range smoothing uses 150 ms, and scene cuts reset both filters on the matching staging pair. Existing GPU motion alignment was adapted to rectangular maps.
+
+Depth capture uses the upstream time gate, default 20 maps/s, with a one-time migration of stored frame cadence. The upstream rate arithmetic and governor reduce video depth frequency when sustained frame budget is missed and recover subject to the upstream backoff/failed-target ceiling. The integration uses the existing frame loop and GPU timer, without importing upstream display-rate changes, rooms, audio or UI. Runtime performance-event throttle integration is not included because that belongs to the unported display subsystem.
+
+Still-image sessions explicitly retain 256x256 staging and their CPU MiDaS startup fallback while uploading prepared V2 results on the stage GL context. Prepared uploads wait for both model pairs to be idle and exclude concurrent captures; navigation generation checks retain the existing colour/depth matching contract. Image sessions bypass video rate limiting and governor.
+
+Validation: all four Android ABIs built; 55 Java unit tests passed; native arithmetic tests passed 3,432 rate + 240 depth + 92 math + 130 media-stick checks. Installed over the existing debug package on Quest 3 (no data reset). ZipDepth loaded on the GPU in 2,793 ms on first use, with 11.3 ms mean warmup inference. Live playback of an existing local clip sustained ~20 maps/s at 17–18 ms inference; the project's 1080p60 2D MMD clip sustained ~20 maps/s at 19–21 ms with zero busy skips in the measured windows. These are model/update figures, not a measurement of compositor FPS or end-to-end motion latency. Image smoke regression logged unchanged V2 GPU initialization and 240 ms inference, with 256x256 native staging and the video governor disabled. Multiple image/video sessions were opened and cleaned up without a recorded crash. Real SMB playback and subjective stereo quality still need the user's own media validation; the SMB transport implementation is unchanged.
+
+Final APK smoke check: installed again successfully, V2 inference 262 ms and prepared static depth upload 3 ms (video governor disabled). Returned to the 1080p60 2D test video. Both ZipDepth assets and the license were verified in the final APK. Temporary copied image and alternate video were removed; the 1080p60 test file remains in the app external-files directory for replay.
+
+Release v0.6: the user confirmed Quest 3 testing succeeded on 2026-10-04. Version name is 12.1-xr0.6 and version code 31406; the existing signed-release workflow publishes v0.6 notes, APK, checksum and notices.

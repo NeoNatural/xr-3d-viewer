@@ -31,7 +31,7 @@
             android:entries="@array/vr_depth_source_names"
             android:entryValues="@array/vr_depth_source_values"
             android:summary="@string/summary_vr_depth_source"
-            android:defaultValue="model" />
+            android:defaultValue="zipdepth" />
         <ListPreference
             android:key="list_vr_env_res"
             android:title="@string/title_vr_env_res"
@@ -46,9 +46,9 @@
         android:title="@string/category_vr_debug">
         <com.limelight.preferences.SeekBarPreference
             android:key="seekbar_vr_inference_cadence"
-            android:defaultValue="3"
-            seekbar:min="1"
-            android:max="6"
+            android:defaultValue="20"
+            seekbar:min="5"
+            android:max="45"
             android:summary="@string/summary_seekbar_vr_inference_cadence"
             android:text="@string/suffix_seekbar_vr_inference_cadence"
             android:title="@string/title_seekbar_vr_inference_cadence" />

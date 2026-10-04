@@ -930,4 +930,13 @@ Java_com_limelight_binding_video_XrRenderer_nativeEndFrame(JNIEnv* env, jobject 
     endInfo.layerCount = layers.count;
     endInfo.layers = layers.order;
     checkXr(xrEndFrame(ctx->session, &endInfo), "xrEndFrame");
+    if (ctx->depthVideoSession && ctx->shouldRender && ctx->depthDisplayPeriod > 0) {
+        int64_t now = nowNs();
+        rateBudgetCpu(&ctx->depthBudget, now - ctx->depthFrameStartNs);
+        int verdict = rateBudgetTick(&ctx->depthBudget, now, 1e9f / ctx->depthDisplayPeriod);
+        int live = ctx->stereoMode == DEPTH_MODE_MODEL && ctx->separationCurrent > 0;
+        int move = depthGovernorWindow(&ctx->depthGov, now, verdict, live);
+        if (move == DEPTH_MOVE_CUT || move == DEPTH_MOVE_RAISED)
+            LOGI("video depth governor: target %d maps/s, frame %.2f ms", ctx->depthGov.target, ctx->depthBudget.frameMs);
+    }
 }

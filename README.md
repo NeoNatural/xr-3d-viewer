@@ -258,3 +258,6 @@ statement of endorsement by the upstream projects.
 Issues and focused pull requests are welcome. Please keep decoded video on the
 GPU path, preserve the original renderer regression path, and run both Java and
 native unit tests before submitting changes.
+
+
+Video depth on Quest 3 now defaults to ZipDepth (512×288, LiteRT GPU FP16), with MiDaS still available in settings. Depth updates default to 20 per second and reduce under sustained video frame pressure. Still images continue to use Depth Anything V2. This is a selective video-depth port; other upstream rooms, audio and interface changes are not included.

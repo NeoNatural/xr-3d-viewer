@@ -875,6 +875,8 @@ typedef struct {
     int imageNavReady;
     int videoPlaying;
     float videoProgress;
+    unsigned char videoTimePixels[VIDEO_TIME_TEX_W * VIDEO_TIME_TEX_H * 4];
+    int videoTimeReady;
     int videoControlArtState;
     int videoControlArtDirty;
     // Diagnostics for the click path, written but never acted on. The analog

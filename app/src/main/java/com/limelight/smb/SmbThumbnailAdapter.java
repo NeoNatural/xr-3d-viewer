@@ -15,6 +15,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.limelight.media.MediaEntry;
+import com.limelight.R;
+import com.limelight.media.MediaFileSize;
 import com.limelight.media.RandomAccessSource;
 
 import java.io.ByteArrayInputStream;
@@ -80,7 +82,7 @@ final class SmbThumbnailAdapter extends BaseAdapter {
         }
         MediaEntry item = entries.get(position);
         label.setText(item.directory ? "📁 " + item.name
-                : item.name + "  (" + item.size / 1024 + " KB)");
+                : activity.getString(R.string.media_file_label, item.name, MediaFileSize.format(item.size)));
         icon.setImageBitmap(null);
         icon.setContentDescription(item.directory ? "Folder" : "Image thumbnail");
         if (!item.directory && isImage(item.name)) {

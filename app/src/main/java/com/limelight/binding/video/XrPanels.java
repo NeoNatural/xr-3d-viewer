@@ -12,6 +12,7 @@ import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.graphics.Typeface;
 
 import com.limelight.LimeLog;
 import com.limelight.preferences.PreferenceConfiguration;
@@ -1133,6 +1134,28 @@ final class XrPanels {
         }
         canvas.drawText(label, box.centerX(),
                 box.centerY() - (text.ascent() + text.descent()) * 0.5f, text);
+    }
+
+    /** A small antialiased timestamp strip, mirrored for the native GL texture rows. */
+    static ByteBuffer buildVideoTimeLabel(String label) {
+        Bitmap bitmap = Bitmap.createBitmap(VIDEO_TIME_TEX_W, VIDEO_TIME_TEX_H,
+                Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+        text.setColor(Color.WHITE);
+        text.setTypeface(Typeface.MONOSPACE);
+        text.setTextAlign(Paint.Align.CENTER);
+        text.setTextSize(32.0f);
+        float available = VIDEO_TIME_TEX_W - 16.0f;
+        float measured = text.measureText(label);
+        if (measured > available) text.setTextSize(32.0f * available / measured);
+        canvas.translate(0, VIDEO_TIME_TEX_H);
+        canvas.scale(1, -1);
+        canvas.drawText(label, VIDEO_TIME_TEX_W * 0.5f,
+                (VIDEO_TIME_TEX_H - text.ascent() - text.descent()) * 0.5f, text);
+        ByteBuffer pixels = toBuffer(bitmap);
+        bitmap.recycle();
+        return pixels;
     }
 
     static ByteBuffer toBuffer(Bitmap bitmap) {

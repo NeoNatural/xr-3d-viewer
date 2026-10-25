@@ -30,9 +30,11 @@ final class SmbProfileStore {
 
     static final class Profile {
         final String host, share, domain, username, password;
+        final int port;
 
-        Profile(String host, String share, String domain, String username, String password) {
+        Profile(String host, int port, String share, String domain, String username, String password) {
             this.host = host;
+            this.port = port;
             this.share = share;
             this.domain = domain;
             this.username = username;
@@ -40,7 +42,8 @@ final class SmbProfileStore {
         }
 
         String label() {
-            return host + "/" + (share.isEmpty() ? "All shares" : share)
+            return host + (port == SmbStorage.DEFAULT_PORT ? "" : ":" + port)
+                    + "/" + (share.isEmpty() ? "All shares" : share)
                     + " (" + username + ")";
         }
     }
@@ -55,7 +58,8 @@ final class SmbProfileStore {
             JSONArray targets = new JSONArray(prefs(context).getString(TARGETS, "[]"));
             for (int i = 0; i < targets.length(); i++) {
                 JSONObject item = targets.getJSONObject(i);
-                result.add(new Profile(item.getString("host"), item.getString("share"),
+                result.add(new Profile(item.getString("host"),
+                        item.optInt("port", SmbStorage.DEFAULT_PORT), item.getString("share"),
                         item.optString("domain"), item.optString("username"),
                         decrypt(item.getString("password"))));
             }
@@ -75,6 +79,7 @@ final class SmbProfileStore {
             }
             JSONObject item = new JSONObject();
             item.put("host", profile.host);
+            item.put("port", profile.port);
             item.put("share", profile.share);
             item.put("domain", profile.domain);
             item.put("username", profile.username);
@@ -104,8 +109,9 @@ final class SmbProfileStore {
         }
     }
 
-    private static boolean same(JSONObject item, Profile profile) {
+    static boolean same(JSONObject item, Profile profile) {
         return item.optString("host").equalsIgnoreCase(profile.host)
+                && item.optInt("port", SmbStorage.DEFAULT_PORT) == profile.port
                 && item.optString("share").equalsIgnoreCase(profile.share)
                 && item.optString("domain").equalsIgnoreCase(profile.domain)
                 && item.optString("username").equals(profile.username);

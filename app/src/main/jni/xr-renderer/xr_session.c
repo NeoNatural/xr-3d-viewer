@@ -746,9 +746,19 @@ Java_com_limelight_binding_video_XrRenderer_nativeSetImageNavigationDepthReady(
 
 JNIEXPORT void JNICALL
 Java_com_limelight_binding_video_XrRenderer_nativeSetVideoControlState(
-        JNIEnv* env, jobject thiz, jlong handle, jboolean playing, jfloat progress) {
+        JNIEnv* env, jobject thiz, jlong handle, jboolean playing, jfloat progress,
+        jobject timeLabel) {
     XrCtx* ctx = (XrCtx*)(intptr_t)handle;
     if (ctx == NULL || !ctx->videoControlsEnabled) return;
+    if (timeLabel != NULL
+            && (*env)->GetDirectBufferCapacity(env, timeLabel) == sizeof(ctx->videoTimePixels)) {
+        const void* pixels = (*env)->GetDirectBufferAddress(env, timeLabel);
+        if (pixels != NULL) {
+            memcpy(ctx->videoTimePixels, pixels, sizeof(ctx->videoTimePixels));
+            ctx->videoTimeReady = 1;
+            ctx->videoControlArtDirty = 1;
+        }
+    }
     float clamped = progress < 0.0f ? 0.0f : progress > 1.0f ? 1.0f : progress;
     if (ctx->videoPlaying != (playing ? 1 : 0)
             || fabsf(ctx->videoProgress - clamped) >= 0.000001f) {

@@ -115,8 +115,8 @@ android {
         minSdk 23
         targetSdk 36
 
-        versionName "12.1-xr0.6"
-        versionCode = 31406
+        versionName "12.1-xr0.7"
+        versionCode = 31407
 
         // Generate native debug symbols to allow Google Play to symbolicate our native crashes
         ndk.debugSymbolLevel = 'FULL'
@@ -303,4 +303,5 @@ dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
 }

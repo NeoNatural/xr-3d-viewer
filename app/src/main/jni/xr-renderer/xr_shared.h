@@ -111,6 +111,10 @@
 #define VIDEO_TOGGLE_R 0.210f
 #define VIDEO_TRACK_L 0.235f
 #define VIDEO_TRACK_R 0.845f
+// Timestamp artwork sits below the existing track within the same control strip.
+#define VIDEO_TIME_TEX_W 768
+#define VIDEO_TIME_TEX_H 40
+#define VIDEO_TIME_BOTTOM 8
 #define VIDEO_FORWARD_L 0.860f
 #define VIDEO_FORWARD_R 0.920f
 #define VIDEO_NEXT_L 0.930f

@@ -24,6 +24,7 @@ import jcifs.smb.SmbRandomAccessFile;
 
 /** A direct SMB client backed by NOVA's multi-credit jcifs-ng fork. */
 public final class SmbStorage implements MediaStorage {
+    public static final int DEFAULT_PORT = 445;
     private final String rootUri;
     private final CIFSContext context;
     private final String domain;
@@ -32,11 +33,19 @@ public final class SmbStorage implements MediaStorage {
 
     public SmbStorage(String host, String share, String domain, String username, String password)
             throws IOException {
+        this(host, DEFAULT_PORT, share, domain, username, password);
+    }
+
+    public SmbStorage(String host, int port, String share, String domain, String username,
+                      String password) throws IOException {
         if (!simpleComponent(host) || share == null
                 || (!share.isEmpty() && !simpleComponent(share))) {
             throw new IllegalArgumentException("Invalid SMB host or share");
         }
-        rootUri = "smb://" + host + "/" + (share.isEmpty() ? "" : share + "/");
+        checkPort(port);
+        // Keep default-port URIs unchanged so existing image history/cache keys still work.
+        rootUri = "smb://" + host + (port == DEFAULT_PORT ? "" : ":" + port)
+                + "/" + (share.isEmpty() ? "" : share + "/");
         this.domain = domain;
         this.username = username;
         this.password = password;
@@ -60,6 +69,19 @@ public final class SmbStorage implements MediaStorage {
 
     public String rootUri() {
         return rootUri;
+    }
+
+    public static int portFromInput(String input) {
+        String value = input.trim();
+        if (value.isEmpty()) return DEFAULT_PORT;
+        if (!value.matches("[0-9]+")) throw new IllegalArgumentException("Invalid SMB port");
+        int port = Integer.parseInt(value);
+        checkPort(port);
+        return port;
+    }
+
+    private static void checkPort(int port) {
+        if (port < 1 || port > 65535) throw new IllegalArgumentException("Invalid SMB port");
     }
 
     public boolean isShareList(String uri) {

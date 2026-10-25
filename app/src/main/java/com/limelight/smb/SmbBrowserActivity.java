@@ -22,6 +22,7 @@ import com.limelight.VideoXrActivity;
 import com.limelight.binding.video.StillImageDepthBatcher;
 import com.limelight.media.MediaEntry;
 import com.limelight.media.MediaDirectoryOrder;
+import com.limelight.media.MediaSortSelector;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
@@ -38,6 +39,7 @@ public final class SmbBrowserActivity extends Activity {
     private final Deque<String> parents = new ArrayDeque<>();
     private final List<MediaEntry> entries = new ArrayList<>();
     private EditText hostField;
+    private EditText portField;
     private EditText shareField;
     private EditText domainField;
     private EditText userField;
@@ -53,6 +55,7 @@ public final class SmbBrowserActivity extends Activity {
     private LinearLayout connectionPanel;
     private ListView listView;
     private SmbThumbnailAdapter adapter;
+    private MediaSortSelector sortSelector;
     private SmbStorage storage;
     private String currentUri;
     private boolean busy;
@@ -76,6 +79,8 @@ public final class SmbBrowserActivity extends Activity {
         forgetButton.setText("Forget selected NAS");
         connectionPanel.addView(forgetButton);
         hostField = field(connectionPanel, "NAS host or IP", InputType.TYPE_CLASS_TEXT);
+        portField = field(connectionPanel, getString(R.string.smb_port_hint),
+                InputType.TYPE_CLASS_NUMBER);
         shareField = field(connectionPanel, "Share (optional; blank lists shares)", InputType.TYPE_CLASS_TEXT);
         domainField = field(connectionPanel, "Domain (optional)", InputType.TYPE_CLASS_TEXT);
         userField = field(connectionPanel, "Username", InputType.TYPE_CLASS_TEXT);
@@ -108,6 +113,8 @@ public final class SmbBrowserActivity extends Activity {
         lastImageButton.setVisibility(View.GONE);
         actions.addView(lastImageButton, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 2));
+        sortSelector = new MediaSortSelector(this, this::sortDirectory);
+        layout.addView(sortSelector);
         status = new TextView(this);
         status.setText("Enter a NAS; leave Share blank to browse its shared folders.");
         status.setSingleLine(true);
@@ -133,6 +140,7 @@ public final class SmbBrowserActivity extends Activity {
                 if (position > 0 && position <= profiles.size()) {
                     SmbProfileStore.Profile profile = profiles.get(position - 1);
                     hostField.setText(profile.host);
+                    portField.setText(String.valueOf(profile.port));
                     shareField.setText(profile.share);
                     domainField.setText(profile.domain);
                     userField.setText(profile.username);
@@ -195,16 +203,25 @@ public final class SmbBrowserActivity extends Activity {
             status.setText("Host is required.");
             return;
         }
+        final int port;
+        try {
+            port = SmbStorage.portFromInput(portField.getText().toString());
+        } catch (IllegalArgumentException error) {
+            portField.setError(getString(R.string.smb_port_invalid));
+            portField.requestFocus();
+            return;
+        }
+        portField.setError(null);
         setBusy(true, "Connecting…");
         network.execute(() -> {
             SmbStorage candidate = null;
             try {
-                candidate = new SmbStorage(host, share, domain, user, password);
+                candidate = new SmbStorage(host, port, share, domain, user, password);
                 List<MediaEntry> found = candidate.list(candidate.rootUri());
                 String saveError = null;
                 try {
                     SmbProfileStore.save(this, new SmbProfileStore.Profile(
-                            host, share, domain, user, password));
+                            host, port, share, domain, user, password));
                 } catch (IOException e) {
                     saveError = e.getMessage();
                 }
@@ -257,7 +274,8 @@ public final class SmbBrowserActivity extends Activity {
         if (adapter != null) adapter.close();
         entries.clear();
         entries.addAll(found);
-        SmbClientManager.setDirectorySnapshot(uri, found);
+        sortSelector.sort(entries);
+        SmbClientManager.setDirectorySnapshot(uri, entries);
         adapter = new SmbThumbnailAdapter(this, storage, entries);
         listView.setAdapter(adapter);
         updateLastImageButton();
@@ -265,6 +283,13 @@ public final class SmbBrowserActivity extends Activity {
                 ? uri + " — " + found.size() + " shares"
                     + (found.isEmpty() ? "; enter a Share manually if needed" : "")
                 : uri + " — " + found.size() + " items");
+    }
+
+    private void sortDirectory() {
+        sortSelector.sort(entries);
+        if (currentUri != null) SmbClientManager.setDirectorySnapshot(currentUri, entries);
+        if (adapter != null) adapter.notifyDataSetChanged();
+        listView.setSelection(0);
     }
 
     private void updateLastImageButton() {
@@ -338,6 +363,7 @@ public final class SmbBrowserActivity extends Activity {
         upButton.setContentDescription(parents.isEmpty() ? "Back to menu" : "Back to parent folder");
         upButton.setAlpha(upButton.isEnabled() ? 1.0f : 0.35f);
         listView.setEnabled(!value);
+        sortSelector.setEnabled(!value);
         status.setText(message);
     }
 

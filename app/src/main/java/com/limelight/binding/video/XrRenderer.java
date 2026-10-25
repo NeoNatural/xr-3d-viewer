@@ -17,6 +17,7 @@ import android.view.Surface;
 
 import com.limelight.FileLog;
 import com.limelight.LimeLog;
+import com.limelight.media.MediaPlaybackTime;
 import com.limelight.preferences.PreferenceConfiguration;
 
 import java.io.ByteArrayOutputStream;
@@ -154,6 +155,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private boolean videoControlsEnabled;
     private final AtomicReference<VideoControlState> pendingVideoControlState =
             new AtomicReference<>();
+    private String videoTimeLabel;
     private final AtomicReference<Float> pendingVideoAspect = new AtomicReference<>();
     private Context prefsContext;
     private PreferenceConfiguration prefConfig;
@@ -258,9 +260,10 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     }
 
     /** Updates the visible play state and timeline without touching native state off-thread. */
-    public void setVideoPlaybackState(boolean playing, float progress) {
+    public void setVideoPlaybackState(boolean playing, float progress,
+                                      long positionMs, long durationMs) {
         pendingVideoControlState.set(new VideoControlState(playing,
-                Math.max(0.0f, Math.min(1.0f, progress))));
+                Math.max(0.0f, Math.min(1.0f, progress)), positionMs, durationMs));
     }
 
     /** Changes the physical screen aspect when a playlist item has different geometry. */
@@ -274,10 +277,14 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private static final class VideoControlState {
         final boolean playing;
         final float progress;
+        final long positionMs;
+        final long durationMs;
 
-        VideoControlState(boolean playing, float progress) {
+        VideoControlState(boolean playing, float progress, long positionMs, long durationMs) {
             this.playing = playing;
             this.progress = progress;
+            this.positionMs = positionMs;
+            this.durationMs = durationMs;
         }
     }
 
@@ -386,7 +393,8 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private native void nativeSetScreenPose(long ctx, float[] pose);
     private native void nativeSetImageNavigationDepthReady(long ctx, boolean leftReady,
                                                             boolean rightReady);
-    private native void nativeSetVideoControlState(long ctx, boolean playing, float progress);
+    private native void nativeSetVideoControlState(long ctx, boolean playing, float progress,
+                                                   ByteBuffer timeLabel);
     private native void nativeSetVideoDisplayAspect(long ctx, float heightOverWidth);
     private native void nativeUploadBackground(long ctx, ByteBuffer pixels, int width, int height);
     private native void nativeUploadRoomModel(long ctx, ByteBuffer mesh, int length);
@@ -1010,7 +1018,13 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
 
             VideoControlState videoState = pendingVideoControlState.getAndSet(null);
             if (videoState != null) {
-                nativeSetVideoControlState(nativeCtx, videoState.playing, videoState.progress);
+                String label = MediaPlaybackTime.label(videoState.positionMs, videoState.durationMs);
+                ByteBuffer pixels = null;
+                if (!label.equals(videoTimeLabel)) {
+                    pixels = XrPanels.buildVideoTimeLabel(label);
+                    videoTimeLabel = label;
+                }
+                nativeSetVideoControlState(nativeCtx, videoState.playing, videoState.progress, pixels);
             }
             Float videoAspect = pendingVideoAspect.getAndSet(null);
             if (videoAspect != null) nativeSetVideoDisplayAspect(nativeCtx, videoAspect);

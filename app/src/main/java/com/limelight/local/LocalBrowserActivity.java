@@ -26,8 +26,9 @@ import com.limelight.R;
 import com.limelight.PcView;
 import com.limelight.StaticImageXrActivity;
 import com.limelight.VideoXrActivity;
-import com.limelight.media.MediaDirectoryOrder;
 import com.limelight.media.MediaEntry;
+import com.limelight.media.MediaFileSize;
+import com.limelight.media.MediaSortSelector;
 import com.limelight.smb.SmbClientManager;
 
 import java.util.ArrayDeque;
@@ -56,6 +57,7 @@ public final class LocalBrowserActivity extends Activity {
     private Button chooseButton;
     private boolean busy;
     private LocalAdapter adapter;
+    private MediaSortSelector sortSelector;
     private Uri treeUri;
     private Uri currentDirectory;
 
@@ -81,6 +83,12 @@ public final class LocalBrowserActivity extends Activity {
         chooseButton.setText("Choose local folder");
         actions.addView(chooseButton, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 2));
+        sortSelector = new MediaSortSelector(this, () -> {
+            sortSelector.sort(entries);
+            if (adapter != null) adapter.notifyDataSetChanged();
+            list.setSelection(0);
+        });
+        root.addView(sortSelector);
         status = new TextView(this);
         status.setSingleLine(true);
         status.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
@@ -166,7 +174,6 @@ public final class LocalBrowserActivity extends Activity {
                         if (video) foundVideos.add(child.toString());
                     }
                 }
-                MediaDirectoryOrder.newestFirst(found);
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
                     if (rememberParent && currentDirectory != null) parents.push(currentDirectory);
@@ -174,6 +181,7 @@ public final class LocalBrowserActivity extends Activity {
                     currentDirectory = directory;
                     entries.clear();
                     entries.addAll(found);
+                    sortSelector.sort(entries);
                     videoUris.clear();
                     videoUris.addAll(foundVideos);
                     if (adapter != null) adapter.close();
@@ -250,6 +258,7 @@ public final class LocalBrowserActivity extends Activity {
         upButton.setAlpha(upButton.isEnabled() ? 1.0f : 0.35f);
         chooseButton.setEnabled(!value);
         list.setEnabled(!value);
+        sortSelector.setEnabled(!value);
     }
 
     private void navigateUp() {
@@ -312,7 +321,8 @@ public final class LocalBrowserActivity extends Activity {
                 row.addView(text, new LinearLayout.LayoutParams(0, thumb, 1));
             }
             MediaEntry item = entries.get(position);
-            text.setText(item.directory ? "📁 " + item.name : item.name);
+            text.setText(item.directory ? "📁 " + item.name
+                    : getString(R.string.media_file_label, item.name, MediaFileSize.format(item.size)));
             icon.setImageBitmap(null);
             if (item.directory) icon.setImageResource(android.R.drawable.ic_menu_agenda);
             else {

@@ -328,9 +328,10 @@ public final class VideoXrActivity extends Activity implements XrRenderer.InputL
         XrRenderer xr = renderer;
         if (current == null || xr == null) return;
         long duration = current.getDuration();
+        long position = current.getCurrentPosition();
         float progress = duration == C.TIME_UNSET || duration <= 0 ? 0.0f
-                : current.getCurrentPosition() / (float)duration;
-        xr.setVideoPlaybackState(current.getPlayWhenReady(), progress);
+                : position / (float)duration;
+        xr.setVideoPlaybackState(current.getPlayWhenReady(), progress, position, duration);
     }
 
     @Override

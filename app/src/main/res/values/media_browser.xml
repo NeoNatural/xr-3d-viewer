@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="smb_port_hint">Port (optional; default 445)</string>
+    <string name="smb_port_invalid">Enter an SMB port from 1 to 65535, or leave blank for 445.</string>
+    <string name="media_sort_order">Sort files</string>
+    <string name="media_file_label" translatable="false">%1$s\u0020\u0020(%2$s)</string>
+    <!-- Keep in MediaDirectoryOrder.SortOrder declaration order. -->
+    <string-array name="media_sort_options">
+        <item>Name: A → Z</item>
+        <item>Name: Z → A</item>
+        <item>Modified: oldest first</item>
+        <item>Modified: newest first</item>
+        <item>Size: smallest first</item>
+        <item>Size: largest first</item>
+        <item>Type (extension): A → Z</item>
+        <item>Type (extension): Z → A</item>
+    </string-array>
+</resources>

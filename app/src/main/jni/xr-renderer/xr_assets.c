@@ -327,6 +327,20 @@ int updateVideoControlArt(XrCtx* ctx, int state) {
             if (transport) p[0] = p[1] = p[2] = p[3] = 255;
         }
     }
+    if (ctx->videoTimeReady) {
+        int left = (int)((trackL + trackR - VIDEO_TIME_TEX_W) * 0.5f);
+        for (int y = 0; y < VIDEO_TIME_TEX_H; y++) {
+            for (int x = 0; x < VIDEO_TIME_TEX_W; x++) {
+                const unsigned char* src = ctx->videoTimePixels + (y * VIDEO_TIME_TEX_W + x) * 4;
+                unsigned char* dst = px + ((y + VIDEO_TIME_BOTTOM) * width + left + x) * 4;
+                // Android bitmap RGB is premultiplied by alpha. Blend the antialiased
+                // glyphs onto the strip's existing dark backing without dark fringes.
+                for (int c = 0; c < 4; c++) {
+                    dst[c] = (unsigned char)(src[c] + (dst[c] * (255 - src[3]) + 127) / 255);
+                }
+            }
+        }
+    }
     int ok = uploadArt(ctx, ctx->imageNavSwapchains[state], ctx->imageNavImages[state],
                        px, width, height);
     free(px);

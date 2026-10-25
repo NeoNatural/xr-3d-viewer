@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="smb_port_hint">端口（可选，默认 445）</string>
+    <string name="smb_port_invalid">请输入 1 至 65535 的 SMB 端口，留空则使用 445。</string>
+    <string name="media_sort_order">文件排序</string>
+    <string-array name="media_sort_options">
+        <item>名称：升序（A → Z）</item>
+        <item>名称：降序（Z → A）</item>
+        <item>修改时间：升序（最早优先）</item>
+        <item>修改时间：降序（最新优先）</item>
+        <item>大小：升序（从小到大）</item>
+        <item>大小：降序（从大到小）</item>
+        <item>类型（扩展名）：升序（A → Z）</item>
+        <item>类型（扩展名）：降序（Z → A）</item>
+    </string-array>
+</resources>

@@ -103,7 +103,9 @@ CI before publication and are accompanied by a SHA-256 checksum.
 2. Choose **Browse local photos and videos** or **Browse SMB photos and videos**.
 3. For local media, grant read access to a folder through Android's folder
    picker. For SMB, enter the NAS host and credentials; leave Share blank to list
-   shared folders or fill it in to open a specific share.
+   shared folders or fill it in to open a specific share. Port is optional and
+   defaults to 445; enter the server's port (for example 1445) for a phone-hosted
+   share or another server using a custom port. Existing saved targets keep 445.
 4. Select an image or video. Other supported items in the same folder become
    the next/previous playlist.
 5. Open **Media Settings** to adjust depth cadence, eye order, passthrough, and
@@ -113,6 +115,14 @@ Use either controller's stick to go to the previous/next image or seek video
 back/forward 10 seconds. Canvas grabbing retains stick distance/scale adjustment;
 release and center the sticks before navigating media. The top controls appear
 on hover, and the browser Back icon returns to the main menu at the root.
+
+Both browsers offer name, modification time, size, and file-extension sorting in
+ascending or descending order. The selection is remembered; newest first remains
+the default. Image/video navigation follows the selected order. **Open last image**
+still locates the saved filename, then continues through the current sorted list.
+File sizes use decimal B/KB/MB/GB/TB units with up to one decimal and values below 1000.
+The video seek bar shows elapsed / total time below the track, using `mm:ss` for
+times under one hour and `h:mm:ss` for longer times.
 
 v0.5 uses `com.liang.xrmediaviewer`, allowing installation alongside Moonlight XR.
 NAS profiles and preferences from the former package must be entered again.

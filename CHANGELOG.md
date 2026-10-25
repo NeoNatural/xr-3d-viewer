@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7 — 2026-10-25
+
+- **自定义 SMB 端口 / Custom SMB ports**：新增可选端口栏（1–65535），留空使用 445。旧连接和默认端口的图片历史保持兼容；保存的连接按端口区分。The optional port defaults to 445, preserving legacy targets and image history; saved targets distinguish different ports.
+- **文件排序 / File sorting**：本地和 SMB 浏览器支持名称、修改时间、大小、类型（扩展名）的升序和降序，记住选择，默认仍为最新优先。图片和视频按所选顺序导航，“回到上次”按文件名定位。Both browsers remember the selected order and apply it to media navigation; last-image lookup continues to use the filename.
+- **文件大小 / Readable file sizes**：本地和 SMB 列表使用 B、KB、MB、GB、TB 等十进制单位，最多保留一位小数，数值小于 1000，包含舍入边界处理。Both browsers automatically scale decimal units and prevent rounded values from reaching 1000.
+- **视频时间 / Video timestamps**：进度条下方显示已播放时长和总时长，不足一小时使用 `分:秒`，一小时起使用 `时:分:秒`；元数据未就绪时总时长显示 `--:--`。The video timeline shows elapsed / total time as `mm:ss` or `h:mm:ss`, with a placeholder for unavailable duration.
+- 版本为 `12.1-xr0.7` / `31407`。用户已确认前三项功能测试通过，并授权加入视频时间后直接发布。Version is `12.1-xr0.7` / `31407`. The user confirmed the browser improvements and authorized release with the timestamp addition.
+
 ## v0.6 — 2026-10-04
 
 ## 更新内容 / Changes

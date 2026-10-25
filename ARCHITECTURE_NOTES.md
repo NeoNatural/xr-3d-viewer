@@ -154,3 +154,15 @@ Validation: all four Android ABIs built; 55 Java unit tests passed; native arith
 Final APK smoke check: installed again successfully, V2 inference 262 ms and prepared static depth upload 3 ms (video governor disabled). Returned to the 1080p60 2D test video. Both ZipDepth assets and the license were verified in the final APK. Temporary copied image and alternate video were removed; the 1080p60 test file remains in the app external-files directory for replay.
 
 Release v0.6: the user confirmed Quest 3 testing succeeded on 2026-10-04. Version name is 12.1-xr0.6 and version code 31406; the existing signed-release workflow publishes v0.6 notes, APK, checksum and notices.
+
+## Browser improvements for v0.7 (2026-10-25)
+
+SMB connection profiles now store a port, defaulting missing legacy JSON fields to 445. Profile identity includes the port. `SmbStorage` retains its original constructor and default-port URI spelling to preserve image-history keys; custom ports use `smb://host:port/share/`. jcifs canonical child URLs and the existing native libsmb2 URL/socket path carry that port through browsing, images, thumbnails and video reads. The native transport and renderer are unchanged.
+
+`MediaSortSelector` shares a persistent eight-option selection between SMB and local browsers. `MediaDirectoryOrder` implements name, modification time, size and extension ordering in both directions, keeping the existing files-before-folders grouping and deterministic name ties. The browser updates the immutable SMB directory snapshot after sorting, so image/video navigation follows the visible list. Last-image lookup still resolves the saved filename; no sort-specific history migration is needed.
+
+Both browsers use `MediaFileSize` for decimal units and at most one fractional digit, including promotion at rounding boundaries to keep the displayed number below 1000. Version is `12.1-xr0.7` / `31407`. The user subsequently confirmed all three browser improvements and authorized direct publication after adding video timestamps.
+
+The video control ticker now includes Media3's actual position and duration in the immutable state passed to the GL thread. `MediaPlaybackTime` formats each time as `mm:ss` or `h:mm:ss` and unavailable duration as `--:--`. `XrPanels` rasterizes antialiased monospace text only when the displayed label changes. The existing native control strip caches a copy of the small RGBA label and blends it below the track. No additional compositor layer, hit zones, decoded-frame readback or decoder/depth ownership changes are introduced. The label is vertically mirrored before native upload, matching the existing stats overlay convention.
+
+Local validation: 67 Java tests (including the hour boundary, unknown duration and playlist labels) and 3,894 native checks passed; debug and signed release builds succeeded for all four configured ABIs. Release Lint completed with no errors. APK package/version and signing were verified; the release certificate matches the previous local v0.6 APK. No Quest is connected for an additional timestamp display check.

@@ -423,6 +423,11 @@ typedef struct {
     EGLConfig eglConfig;
     EGLContext eglContext;
     EGLSurface eglPbuffer;
+    int windowMode;
+    EGLSurface panelSurface;
+    int panelEyeWidth;
+    int panelHeight;
+    int panelSwapEyes;
 
     XrInstance instance;
     XrSystemId systemId;
@@ -569,7 +574,7 @@ typedef struct {
     GLuint offsetTexture;
     GLuint offsetFbo;
     int occlusionEnabled;
-    float convergence;
+    _Atomic float convergence;
     float separationOverride;
     // Static images do not continuously submit source frames. A live panel
     // adjustment sets this so the current colour/depth textures are warped
@@ -1161,6 +1166,7 @@ extern PFNDELETEQUERIESEXT pfnDeleteQueries;
 GLuint compileShader(GLenum type, const char* src);
 int linkProgram(GLuint* out, const char* fragmentSrc, const char* what);
 int initGl(XrCtx* ctx);
+void updateVideoDepthBudget(XrCtx* ctx, int64_t startNs, float hz);
 void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation);
 
 // xr_depth.c: the depth model staging and the stage thread's uploads

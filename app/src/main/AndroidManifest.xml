@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    xmlns:horizonos="http://schemas.horizonos/sdk">
+    xmlns:metavr="http://schemas.meta.com/metavr-sdk">
 
     <!-- The OpenXR loader declares minSdk 24 but is only ever loaded on
          headsets, so the app wide minSdk 21 remains safe -->
@@ -16,12 +16,7 @@
         </intent>
     </queries>
 
-    <!-- Horizon OS refuses to route immersive frames for apps that do not
-         declare an HzOS SDK version since around the v77 update. Other
-         platforms ignore this namespace entirely -->
-    <horizonos:uses-horizonos-sdk
-        horizonos:minSdkVersion="77"
-        horizonos:targetSdkVersion="77" />
+    <metavr:uses-metavr-sdk metavr:minSdkVersion="207" metavr:targetSdkVersion="207" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -46,36 +41,6 @@
         android:name="android.hardware.type.pc"
         android:required="false"/>
 
-    <!-- VR headsets. Optional so phones and TVs are unaffected -->
-    <uses-feature
-        android:name="android.hardware.vr.headtracking"
-        android:version="1"
-        android:required="false"/>
-    <!-- Meta gates the passthrough cameras on this. Not required, since the
-         other headset does passthrough as a blend mode instead -->
-    <uses-feature
-        android:name="com.oculus.feature.PASSTHROUGH"
-        android:required="false"/>
-    <!-- Hand tracking. Meta wants the feature and the permission together, and
-         Pico reads its own key. All optional: controllers still work without -->
-    <uses-feature
-        android:name="oculus.software.handtracking"
-        android:required="false"/>
-    <uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
-    <uses-feature
-        android:name="pvr.software.handtracking"
-        android:required="false"/>
-    <!-- Eye tracking, for headsets that point by looking. Optional again, and
-         only ever used to aim the existing pointer -->
-    <uses-feature
-        android:name="oculus.software.eye_tracking"
-        android:required="false"/>
-    <uses-permission android:name="com.oculus.permission.EYE_TRACKING" />
-    <uses-feature
-        android:name="pvr.software.eyetracking"
-        android:required="false"/>
-    <uses-permission android:name="com.picovr.permission.EYE_TRACKING" />
-
     <application
         android:name=".MoonlightApplication"
         android:allowBackup="true"
@@ -90,16 +55,6 @@
         android:localeConfig="@xml/locales_config"
         android:enableOnBackInvokedCallback="false"
         android:theme="@style/AppTheme">
-
-        <!-- Pico classifies the whole app from this. The 2d activities
-             override it individually below -->
-        <meta-data
-            android:name="pvr.app.type"
-            android:value="vr" />
-        <!-- Meta Quest device gate for the VR activity -->
-        <meta-data
-            android:name="com.oculus.supportedDevices"
-            android:value="quest2|questpro|quest3" />
 
         <!-- Samsung multi-window support -->
         <uses-library
@@ -167,33 +122,21 @@
         <activity
             android:name=".StaticImageXrActivity"
             android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection"
-            android:noHistory="true"
-            android:resizeableActivity="false"
+            android:resizeableActivity="true"
             android:enableOnBackInvokedCallback="false"
             android:excludeFromRecents="true"
-            android:theme="@style/StreamTheme"
             android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="com.oculus.intent.category.VR" />
-            </intent-filter>
-            <meta-data android:name="pvr.app.type" android:value="vr" />
+            <meta-data android:name="pvr.app.type" android:value="2d" />
         </activity>
 
         <activity
             android:name=".VideoXrActivity"
             android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection"
-            android:noHistory="true"
-            android:resizeableActivity="false"
+            android:resizeableActivity="true"
             android:enableOnBackInvokedCallback="false"
             android:excludeFromRecents="true"
-            android:theme="@style/StreamTheme"
             android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="com.oculus.intent.category.VR" />
-            </intent-filter>
-            <meta-data android:name="pvr.app.type" android:value="vr" />
+            <meta-data android:name="pvr.app.type" android:value="2d" />
         </activity>
 
         <activity

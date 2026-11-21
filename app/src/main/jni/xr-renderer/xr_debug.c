@@ -77,7 +77,9 @@ void pollCaptureRequest(XrCtx* ctx) {
     propFlag(PROP_OVERLAY, &ctx->overlayVisible);
     propFlag(PROP_UPSAMPLE, &ctx->upsampleEnabled);
     propFlag(PROP_OCCLUSION, &ctx->occlusionEnabled);
-    propPercent(PROP_CONVERGENCE, &ctx->convergence);
+    float convergence = ctx->convergence;
+    propPercent(PROP_CONVERGENCE, &convergence);
+    ctx->convergence = convergence;
     // Same tenths of a percent of frame width the preference uses
     propScaled(PROP_SEPARATION, &ctx->separationOverride, 0.001f, 50);
     // Tenths of a metre, the same units the preferences use

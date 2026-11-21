@@ -648,3 +648,13 @@ Java_com_limelight_binding_video_XrRenderer_nativeGetDepthTarget(JNIEnv* env, jo
     XrCtx* ctx = (XrCtx*)(intptr_t)handle;
     return ctx ? ctx->depthGov.target : 0;
 }
+
+void updateVideoDepthBudget(XrCtx* ctx, int64_t startNs, float hz) {
+    int64_t now = nowNs();
+    rateBudgetCpu(&ctx->depthBudget, now - startNs);
+    int verdict = rateBudgetTick(&ctx->depthBudget, now, hz);
+    int live = ctx->stereoMode == DEPTH_MODE_MODEL && ctx->separationCurrent > 0;
+    int move = depthGovernorWindow(&ctx->depthGov, now, verdict, live);
+    if (move == DEPTH_MOVE_CUT || move == DEPTH_MOVE_RAISED)
+        LOGI("video depth governor: target %d maps/s, frame %.2f ms", ctx->depthGov.target, ctx->depthBudget.frameMs);
+}

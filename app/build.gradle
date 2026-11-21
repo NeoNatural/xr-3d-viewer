@@ -154,7 +154,7 @@ android {
                 }
             }
 
-            applicationId "com.liang.xrmediaviewer.root"
+            applicationId "com.liang.xrmediaviewer.window3d.root"
             dimension "root"
             buildConfigField "boolean", "ROOT_BUILD", "true"
         }
@@ -166,7 +166,7 @@ android {
                 }
             }
 
-            applicationId "com.liang.xrmediaviewer"
+            applicationId "com.liang.xrmediaviewer.window3d"
             dimension "root"
             buildConfigField "boolean", "ROOT_BUILD", "false"
         }
@@ -214,8 +214,8 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix ".debug"
-            resValue "string", "app_label", "XR Media Viewer (Debug)"
-            resValue "string", "app_label_root", "XR Media Viewer (Root Debug)"
+            resValue "string", "app_label", "XR Media Viewer · Window 3D (Debug)"
+            resValue "string", "app_label_root", "XR Media Viewer · Window 3D (Root Debug)"
 
             // The renderer's setprop tuning knobs and frame capture live in
             // debug builds only
@@ -232,8 +232,8 @@ android {
         release {
             // This fork ships under its own applicationId, so the unofficial
             // suffix upstream asks forks to keep is no longer needed.
-            resValue "string", "app_label", "XR Media Viewer"
-            resValue "string", "app_label_root", "XR Media Viewer (Root)"
+            resValue "string", "app_label", "XR Media Viewer · Window 3D"
+            resValue "string", "app_label_root", "XR Media Viewer · Window 3D (Root)"
 
             if (canSign) {
                 signingConfig signingConfigs.release
@@ -278,6 +278,7 @@ tasks.named('preBuild').configure {
 }
 
 dependencies {
+    compileOnly 'com.meta.metavr:metavr-os-jsdk:207'
     // Local/remote file playback. Video frames are decoded by MediaCodec directly
     // into XrRenderer's Surface; they are never copied through a CPU Bitmap.
     // 1.8.1 keeps the current player behavior while the app targets API 23+.

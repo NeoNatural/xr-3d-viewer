@@ -4,7 +4,7 @@ set -euo pipefail
 # ndk-build cannot parse the space in this checkout's parent directory.
 # Build a synchronized copy at a physical path without spaces.
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-build_dir="${TMPDIR:-/private/tmp}/moonlight-xr-agent-build"
+build_dir="${TMPDIR:-/private/tmp}/moonlight-window-3d-agent-build"
 
 if [[ "$build_dir" == *" "* ]]; then
   echo "Build directory must not contain spaces: $build_dir" >&2

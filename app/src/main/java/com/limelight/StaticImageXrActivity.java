@@ -1,6 +1,5 @@
 package com.limelight;
 
-import android.app.Activity;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -11,9 +10,7 @@ import android.os.Bundle;
 import android.os.Debug;
 import android.net.Uri;
 import android.view.Surface;
-import android.view.View;
-import android.view.Window;
-import android.view.WindowManager;
+import android.widget.Button;
 
 import com.limelight.binding.video.XrRenderer;
 import com.limelight.binding.video.StillImageDepthBatcher;
@@ -47,8 +44,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.List;
 
-/** A local image probe for the existing XR depth and stereo pipeline. */
-public class StaticImageXrActivity extends Activity implements XrRenderer.InputListener {
+/** Displays local and SMB images on the stereo panel. */
+public class StaticImageXrActivity extends WindowMediaActivity {
     public static final String EXTRA_SMB_URI = "smbUri";
     public static final String EXTRA_SMB_DIRECTORY = "smbDirectory";
     public static final String EXTRA_OPEN_STARTED_NS = "openStartedNs";
@@ -62,7 +59,7 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
     private static final int HISTORY_CACHE = 2;
 
     private volatile boolean stopped;
-    private XrRenderer renderer;
+    private Button previous, next;
     private Thread imageThread;
     private final AtomicInteger requestedStep = new AtomicInteger();
     private final AtomicLong requestedStepNs = new AtomicLong();
@@ -87,17 +84,11 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        requestWindowFeature(Window.FEATURE_NO_TITLE);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN
-                | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN);
-        getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        if (!openPanel(FRAME_WIDTH, FRAME_HEIGHT, ".image")) return;
+        previous = addControl(R.string.window_previous, () -> navigate(-1));
+        next = addControl(R.string.window_next, () -> navigate(1));
+        previous.setEnabled(false);
+        next.setEnabled(false);
 
         imageThread = new Thread(this::runImage, "Static Image XR Source");
         imageThread.start();
@@ -167,23 +158,21 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
             if (stopped) {
                 return;
             }
-            PreferenceConfiguration prefs = PreferenceConfiguration.readPreferences(this);
+            PreferenceConfiguration prefs = mediaPrefs;
             // Static artwork should remain visually stable around the screen.
             // Disable both the glow quad and image-colour room lighting for this
             // session; this also removes their per-frame colour sample pass.
             prefs.vrAmbilight = false;
             prefs.vrRoomLight = false;
-            XrRenderer xr = new XrRenderer();
-            renderer = xr;
+            XrRenderer xr = panelRenderer;
             xr.setFastStillImageDepth(true);
             xr.setImageNavigationEnabled(currentIndex >= 0 && imageQueue.size() > 1);
-            xr.setInputListener(this);
             if (!xr.start(this, FRAME_WIDTH, FRAME_HEIGHT, prefs)) {
-                LimeLog.severe("Static XR renderer failed to start");
-                runOnUiThread(this::finish);
+                runOnUiThread(() -> failPanel(R.string.window_render_error));
                 return;
             }
             currentGeneration = xr.beginStillImageTransition();
+            updateNavigation(currentIndex);
 
             try {
                 current = decode.get();
@@ -235,6 +224,7 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
                             bitmap = next.bitmap;
                             source = new Rect(0, 0, bitmap.getWidth(), bitmap.getHeight());
                             currentIndex = navigationIndex;
+                            updateNavigation(currentIndex);
                             depthPublished = false;
                             frameDirty = true;
                             currentGeneration = xr.beginStillImageTransition();
@@ -299,11 +289,6 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
                         LimeLog.info("Static XR navigation ignored at index " + currentIndex
                                 + ", direction " + step + ", queue " + imageQueue.size());
                     }
-                }
-                if (currentIndex >= 0) {
-                    xr.setImageNavigationDepthReady(
-                            depthReadyAt(nearby, currentIndex - 1),
-                            depthReadyAt(nearby, currentIndex + 1));
                 }
                 if (frameDirty) {
                     Canvas canvas = null;
@@ -373,11 +358,10 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
             recycleTask(navigation, recycled);
             for (FutureTask<PreparedImage> task : nearby.values()) recycleTask(task, recycled);
             prefetch.shutdownNow();
-            XrRenderer xr = renderer;
+            XrRenderer xr = panelRenderer;
             if (xr != null) {
                 xr.prepareForStop();
                 xr.cleanup();
-                renderer = null;
             }
         }
     }
@@ -491,14 +475,6 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
             FutureTask<PreparedImage> neighbor = ensureDecoded(decoder, nearby, opposite);
             scheduleDepthOne(worker, batcher, neighbor, depthScheduled);
         }
-    }
-
-    private boolean depthReadyAt(Map<Integer, FutureTask<PreparedImage>> nearby, int index) {
-        if (index < 0 || index >= imageQueue.size()) return true;
-        FutureTask<PreparedImage> task = nearby.get(index);
-        if (task == null || !task.isDone() || task.isCancelled()) return false;
-        try { return task.get().depthReady; }
-        catch (Exception e) { return false; }
     }
 
     private void evictDistant(Map<Integer, FutureTask<PreparedImage>> nearby, int index,
@@ -704,15 +680,17 @@ public class StaticImageXrActivity extends Activity implements XrRenderer.InputL
         super.onDestroy();
     }
 
-    @Override public void onVrPointerMove(float u, float v) { }
-    @Override public void onVrButton(int button, boolean down) {
+    private void updateNavigation(int index) {
+        boolean hasPrevious = index > 0;
+        boolean hasNext = index >= 0 && index + 1 < imageQueue.size();
+        runOnUiThread(() -> {
+            previous.setEnabled(hasPrevious);
+            next.setEnabled(hasNext);
+        });
     }
-    @Override public void onVrImageNavigate(int direction) {
-        requestedStep.set(direction);
+
+    private void navigate(int direction) {
         requestedStepNs.set(System.nanoTime());
-        LimeLog.info("Static XR navigation input direction " + direction);
+        requestedStep.set(direction);
     }
-    @Override public void onVrScroll(int clicks) { }
-    @Override public void onVrKey(int code) { }
-    @Override public void onVrExit() { runOnUiThread(this::finish); }
 }

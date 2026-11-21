@@ -66,6 +66,49 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     // loop while it frees the context, so no thread can reach a context that
     // is halfway through being destroyed
     private final Object nativeLock = new Object();
+    private final Runnable panelError;
+    private final Object panelLock = new Object();
+    private Surface panelSurface;
+    private boolean panelSurfaceChanged;
+    private volatile float panelSeparation, panelConvergence;
+    private float panelRefreshHz;
+    private final AtomicBoolean captureRetainedFrame = new AtomicBoolean();
+
+    public void setPanelDepth(int separation, int convergence) {
+        panelSeparation = separation / 1000f;
+        panelConvergence = convergence / 100f;
+        requestVideoRedraw();
+    }
+
+    public XrRenderer() {
+        this(null);
+    }
+
+    /** A panel renderer owns the same decoder texture and depth workers as XR. */
+    public XrRenderer(Runnable panelError) {
+        this.panelError = panelError;
+    }
+
+    /** Called by SurfaceHolder on the UI thread, including null before destruction. */
+    public void setPanelSurface(Surface surface) {
+        synchronized (panelLock) {
+            panelSurface = surface;
+            panelSurfaceChanged = true;
+            panelLock.notifyAll();
+        }
+    }
+
+    private void wakePanel() {
+        if (panelError != null) {
+            synchronized (panelLock) { panelLock.notifyAll(); }
+        }
+    }
+
+    private void requestVideoRedraw() {
+        forceVideoRedraw.set(true);
+        wakePanel();
+    }
+
     private Thread renderThread;
     private Thread depthThread;
     private Thread depthStageThread;
@@ -316,8 +359,9 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         int generation = stillImageGeneration.incrementAndGet();
         pendingStillDepth.set(null);
         preparedStillDepthActive = false;
-        long ctx = nativeCtx;
-        if (ctx != 0) nativeSetStillDepthPending(ctx, true);
+        synchronized (nativeLock) {
+            if (nativeCtx != 0) nativeSetStillDepthPending(nativeCtx, true);
+        }
         return generation;
     }
 
@@ -332,9 +376,11 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
 
     public void allowStillDepthFallback() {
         preparedStillDepthActive = false;
-        long ctx = nativeCtx;
-        if (ctx != 0) nativeSetStillDepthPending(ctx, false);
-        forceVideoRedraw.set(true);
+        if (panelError != null) captureRetainedFrame.set(true);
+        synchronized (nativeLock) {
+            if (nativeCtx != 0) nativeSetStillDepthPending(nativeCtx, false);
+        }
+        requestVideoRedraw();
     }
 
     /** Queues a prepared 256x256 MiDaS result for upload on the depth GL thread. */
@@ -362,7 +408,10 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                                    boolean depthDebug, int convergence, int depthScale,
                                    boolean handTracking, int sharpenMode, boolean perfOverlay,
                                    boolean ambilight, int ambiLevel, boolean roomLight,
-                                   int envResTier, int mediaControlsMode);
+                                   int envResTier, int mediaControlsMode, boolean windowMode);
+    private native boolean nativeSetPanelSurface(long ctx, Surface surface);
+    private native boolean nativeDrawPanel(long ctx, float[] texMatrix, float separation,
+                                           float convergence, boolean eyeSwap, float refreshHz);
     private native void nativeSetCaptureDir(long ctx, String dir);
     private native int nativeGetTexId(long ctx);
     private native ByteBuffer nativeGetModelInput(long ctx, int pair);
@@ -418,6 +467,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     public boolean start(final Activity activity, final int videoWidth, final int videoHeight,
                          final PreferenceConfiguration prefs) {
         prefsContext = activity.getApplicationContext();
+        if (panelError != null) panelRefreshHz = activity.getWindowManager().getDefaultDisplay().getRefreshRate();
         currentDisplayAspect = videoWidth > 0 ? (float) videoHeight / videoWidth : 9.0f / 16.0f;
         applyMediaPreferences(prefs);
         final CountDownLatch initLatch = new CountDownLatch(1);
@@ -460,7 +510,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                         prefs.vrAmbilight, prefs.vrAmbilightLevel, prefs.vrRoomLight,
                         prefs.vrEnvResTier, imageNavigationEnabled ? MEDIA_CONTROLS_IMAGES
                                 : videoControlsEnabled ? MEDIA_CONTROLS_VIDEO
-                                : MEDIA_CONTROLS_NONE);
+                                : MEDIA_CONTROLS_NONE, panelError != null);
                 if (nativeCtx == 0) {
                     initLatch.countDown();
                     return;
@@ -471,8 +521,10 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 // the decoder's stats path checks
                 prefConfig = prefs;
                 nativeSetDepthRate(nativeCtx, prefs.vrDepthRate, videoControlsEnabled);
-                restoreScreenPose();
-                startEnvironment(prefs);
+                if (panelError == null) {
+                    restoreScreenPose();
+                    startEnvironment(prefs);
+                }
 
                 File captureDir = activity.getExternalFilesDir(null);
                 if (captureDir != null) {
@@ -581,6 +633,10 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
 
                     startDepthStage(source);
                     depthReady = true;
+                    if (panelError != null) {
+                        captureRetainedFrame.set(true);
+                        requestVideoRedraw();
+                    }
                     runDepthModel(source);
                 } finally {
                     depthReady = false;
@@ -745,7 +801,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                         publishedStillGeneration = prepared.generation;
                         preparedStillDepthActive = true;
                         nativeSetStillDepthPending(nativeCtx, false);
-                        forceVideoRedraw.set(true);
+                        requestVideoRedraw();
                         publishedFrameIndex = videoFrameIndex;
                         publishedFrameNs = System.nanoTime();
                     } else nativeSetStillDepthPending(nativeCtx, true);
@@ -780,6 +836,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                     publishedStillGeneration = pairStillGeneration[pair];
                 }
                 upload = nativeUploadDepth(nativeCtx, pair);
+                if (panelError != null && fastStillImageDepth) requestVideoRedraw();
                 publishedFrameIndex = pairFrameIndex[pair];
                 publishedFrameNs = pairFrameNs[pair];
             }
@@ -874,6 +931,33 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         depthThread = null;
     }
 
+    private int awaitPanelFrame() {
+        synchronized (panelLock) {
+            while (!stopping && !panelSurfaceChanged && pendingFrames.get() == 0
+                    && !forceVideoRedraw.get()) {
+                try {
+                    panelLock.wait();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return FRAME_EXIT;
+                }
+            }
+            return stopping ? FRAME_EXIT : FRAME_RENDER;
+        }
+    }
+
+    private boolean presentPanel(boolean redraw, boolean eyeSwap) {
+        synchronized (panelLock) {
+            if (panelSurfaceChanged) {
+                panelSurfaceChanged = false;
+                if (!nativeSetPanelSurface(nativeCtx, panelSurface)) return false;
+                redraw = true;
+            }
+            return panelSurface == null || !redraw || videoFrameIndex == 0
+                    || nativeDrawPanel(nativeCtx, texMatrix, panelSeparation, panelConvergence, eyeSwap, panelRefreshHz);
+        }
+    }
+
     private void runFrameLoop(PreferenceConfiguration prefs) {
         float distance = prefs.vrDistance / 10.0f;
         // For videos the size control denotes the screen diagonal. That gives
@@ -894,7 +978,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         long ageFrames = 0, ageNs = 0, ageSamples = 0, worstAgeNs = 0;
 
         while (!stopping) {
-            int r = nativeWaitBeginFrame(nativeCtx);
+            int r = panelError == null ? nativeWaitBeginFrame(nativeCtx) : awaitPanelFrame();
             if (r == FRAME_EXIT) {
                 break;
             }
@@ -909,9 +993,11 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
             // the next one with no native state to keep in step.
             boolean headLocked = prefs.vrHeadLocked;
 
-            nativeUpdateInput(nativeCtx, distance, quadWidth, curvature, headLocked,
-                    pointer, gaze, inputState);
-            dispatchInput();
+            if (panelError == null) {
+                nativeUpdateInput(nativeCtx, distance, quadWidth, curvature, headLocked,
+                        pointer, gaze, inputState);
+                dispatchInput();
+            }
 
             boolean surfaceFrame = pendingFrames.getAndSet(0) > 0;
             if (surfaceFrame) {
@@ -949,7 +1035,19 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 }
                 videoFrameIndex++;
             }
-            boolean newFrame = surfaceFrame || forceVideoRedraw.getAndSet(false);
+            boolean redraw = forceVideoRedraw.getAndSet(false);
+            boolean newFrame = surfaceFrame || redraw;
+            if (panelError != null) {
+                if (captureRetainedFrame.getAndSet(false) && !surfaceFrame && videoFrameIndex > 0
+                        && depthReady && !preparedStillDepthActive) {
+                    startDepthCapture();
+                }
+                if (!presentPanel(newFrame, eyeSwap)) {
+                    panelError.run();
+                    break;
+                }
+                continue;
+            }
             // Upload here rather than from the reporting thread, since this is
             // the thread that owns the GL context
             ByteBuffer overlay = pendingOverlay.getAndSet(null);
@@ -1729,6 +1827,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     @Override
     public void onFrameAvailable(SurfaceTexture st) {
         pendingFrames.incrementAndGet();
+        wakePanel();
     }
 
     /**
@@ -1738,6 +1837,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
      */
     public void prepareForStop() {
         stopping = true;
+        wakePanel();
 
         if (renderThread != null) {
             try {

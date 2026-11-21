@@ -1,16 +1,17 @@
 package com.limelight;
 
-import android.app.Activity;
-import android.content.Intent;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.preference.PreferenceManager;
+import android.view.Gravity;
 import android.view.Surface;
-import android.view.View;
-import android.view.Window;
-import android.view.WindowManager;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.SeekBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.OptIn;
@@ -27,6 +28,7 @@ import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 
 import com.limelight.binding.video.XrRenderer;
+import com.limelight.media.MediaPlaybackTime;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.smb.SmbClientManager;
 import com.limelight.smb.SmbDataSource;
@@ -35,9 +37,9 @@ import com.limelight.smb.SmbStorage;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Plays a local video through the existing OpenXR depth and stereo renderer. */
+/** Plays local and SMB video playlists on the stereo panel. */
 @OptIn(markerClass = UnstableApi.class)
-public final class VideoXrActivity extends Activity implements XrRenderer.InputListener {
+public final class VideoXrActivity extends WindowMediaActivity {
     public static final String EXTRA_VIDEO_URIS = "videoUris";
     public static final String EXTRA_SMB_VIDEO_URIS = "smbVideoUris";
     public static final String EXTRA_START_INDEX = "startIndex";
@@ -50,7 +52,14 @@ public final class VideoXrActivity extends Activity implements XrRenderer.InputL
 
     private volatile boolean stopped;
     private Thread sourceThread;
-    private XrRenderer renderer;
+    private int eyeLongEdgeLimit;
+    private boolean rendererReady;
+    private boolean visible;
+    private boolean resumePlayback;
+    private Button previous, play, nextButton;
+    private SeekBar seek;
+    private TextView clock;
+    private boolean dragging;
     private ExoPlayer player;
     private Surface videoSurface;
     private final Handler controlsHandler = new Handler(Looper.getMainLooper());
@@ -61,7 +70,7 @@ public final class VideoXrActivity extends Activity implements XrRenderer.InputL
         }
     };
 
-    private static final class VideoGeometry {
+    static final class VideoGeometry {
         final int width;
         final int height;
 
@@ -69,22 +78,21 @@ public final class VideoXrActivity extends Activity implements XrRenderer.InputL
             this.width = width;
             this.height = height;
         }
+
+        VideoGeometry fitWithin(int longEdge) {
+            float scale = Math.min(1f, longEdge / (float)Math.max(width, height));
+            return new VideoGeometry(Math.max(1, Math.round(width * scale)),
+                    Math.max(1, Math.round(height * scale)));
+        }
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        requestWindowFeature(Window.FEATURE_NO_TITLE);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN
-                | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN);
-        getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        if (!openPanel(DEFAULT_WIDTH, DEFAULT_HEIGHT, ".video")) return;
+        eyeLongEdgeLimit = parsePositive(PreferenceManager.getDefaultSharedPreferences(this)
+                .getString(getString(R.string.window_resolution_key), "1920"), DEFAULT_WIDTH);
+        createControls();
 
         ArrayList<String> smbPlaylist = getIntent().getStringArrayListExtra(EXTRA_SMB_VIDEO_URIS);
         if (smbPlaylist != null && !smbPlaylist.isEmpty()) {
@@ -122,9 +130,9 @@ public final class VideoXrActivity extends Activity implements XrRenderer.InputL
             });
             return;
         }
-        startRenderer(DEFAULT_WIDTH, DEFAULT_HEIGHT, xr -> runOnUiThread(() ->
+        startRenderer(DEFAULT_WIDTH, DEFAULT_HEIGHT, xr ->
                 createSmbPlayer(playlist, startIndex, storage, xr.getInputSurface(),
-                        startedNs)));
+                        startedNs));
     }
 
     private void startVideo(ArrayList<Uri> playlist, int startIndex) {
@@ -133,8 +141,8 @@ public final class VideoXrActivity extends Activity implements XrRenderer.InputL
         VideoGeometry geometry = readGeometry(uri);
         if (stopped) return;
 
-        startRenderer(geometry.width, geometry.height, xr -> runOnUiThread(() ->
-                createPlayer(playlist, startIndex, xr.getInputSurface(), startedNs)));
+        startRenderer(geometry.width, geometry.height, xr ->
+                createPlayer(playlist, startIndex, xr.getInputSurface(), startedNs));
     }
 
     private interface RendererReady {
@@ -142,26 +150,25 @@ public final class VideoXrActivity extends Activity implements XrRenderer.InputL
     }
 
     private void startRenderer(int width, int height, RendererReady ready) {
-        PreferenceConfiguration prefs = PreferenceConfiguration.readPreferences(this);
+        PreferenceConfiguration prefs = mediaPrefs;
         // Video playback should not colour the screen edge or the room around it.
         prefs.vrAmbilight = false;
         prefs.vrRoomLight = false;
-        XrRenderer xr = new XrRenderer();
-        renderer = xr;
+        XrRenderer xr = panelRenderer;
         xr.setVideoControlsEnabled(true);
-        xr.setInputListener(this);
         if (!xr.start(this, width, height, prefs)) {
-            LimeLog.severe("Video XR renderer failed to start");
-            runOnUiThread(this::finish);
+            runOnUiThread(() -> failPanel(R.string.window_render_error));
             return;
         }
-        if (stopped) {
-            xr.prepareForStop();
-            xr.cleanup();
-            return;
-        }
-
-        ready.run(xr);
+        runOnUiThread(() -> {
+            if (stopped || isFinishing()) {
+                xr.prepareForStop();
+                xr.cleanup();
+                return;
+            }
+            rendererReady = true;
+            ready.run(xr);
+        });
     }
 
     private VideoGeometry readGeometry(Uri uri) {
@@ -259,11 +266,12 @@ public final class VideoXrActivity extends Activity implements XrRenderer.InputL
             public void onVideoSizeChanged(VideoSize videoSize) {
                 LimeLog.info(sourceName + " video decoder output " + videoSize.width + "x"
                         + videoSize.height + ", pixel ratio " + videoSize.pixelWidthHeightRatio);
-                XrRenderer xr = renderer;
-                if (xr != null && videoSize.width > 0 && videoSize.height > 0
-                        && videoSize.pixelWidthHeightRatio > 0.0f) {
-                    xr.setVideoDisplayAspect(videoSize.height
-                            / (videoSize.width * videoSize.pixelWidthHeightRatio));
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    VideoGeometry eye = new VideoGeometry(videoSize.width, videoSize.height)
+                            .fitWithin(eyeLongEdgeLimit);
+                    LimeLog.info("Window video per-eye output " + eye.width + "x" + eye.height);
+                    setPanelGeometry(eye.width, eye.height,
+                            videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height);
                 }
             }
 
@@ -292,7 +300,8 @@ public final class VideoXrActivity extends Activity implements XrRenderer.InputL
 
     private void startPlayer(ExoPlayer next) {
         next.prepare();
-        next.play();
+        if (visible) next.play();
+        else resumePlayback = true;
         controlsHandler.removeCallbacks(controlsTicker);
         controlsHandler.post(controlsTicker);
     }
@@ -300,7 +309,10 @@ public final class VideoXrActivity extends Activity implements XrRenderer.InputL
     private void togglePlayback() {
         ExoPlayer current = player;
         if (current == null) return;
-        if (current.isPlaying()) current.pause();
+        if (current.getPlaybackState() == Player.STATE_ENDED) {
+            current.seekToDefaultPosition();
+            current.play();
+        } else if (current.getPlayWhenReady()) current.pause();
         else current.play();
         LimeLog.info("Local video " + (current.getPlayWhenReady() ? "playing" : "paused")
                 + " at " + current.getCurrentPosition() + " ms");
@@ -323,15 +335,67 @@ public final class VideoXrActivity extends Activity implements XrRenderer.InputL
         current.seekTo((long)(Math.max(0.0f, Math.min(1.0f, fraction)) * duration));
     }
 
+    private void createControls() {
+        previous = addControl(R.string.window_previous, () -> {
+            if (player != null && player.hasPreviousMediaItem()) player.seekToPreviousMediaItem();
+        });
+        addControl(R.string.window_rewind, () -> seekBy(-SEEK_STEP_MS));
+        play = addControl(R.string.window_play, this::togglePlayback);
+        addControl(R.string.window_forward, () -> seekBy(SEEK_STEP_MS));
+        nextButton = addControl(R.string.window_next, () -> {
+            if (player != null && player.hasNextMediaItem()) player.seekToNextMediaItem();
+        });
+        LinearLayout timeline = new LinearLayout(this);
+        timeline.setGravity(Gravity.CENTER_VERTICAL);
+        seek = new SeekBar(this);
+        seek.setContentDescription(getString(R.string.window_position));
+        seek.setMax(1000);
+        seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            public void onStartTrackingTouch(SeekBar bar) { dragging = true; }
+            public void onStopTrackingTouch(SeekBar bar) {
+                dragging = false;
+                seekToFraction(bar.getProgress() / 1000f);
+            }
+            public void onProgressChanged(SeekBar bar, int value, boolean user) {
+                if (user && !dragging) seekToFraction(value / 1000f);
+            }
+        });
+        clock = new TextView(this);
+        timeline.addView(seek, new LinearLayout.LayoutParams(0, -2, 1));
+        timeline.addView(clock);
+        layout.addView(timeline, 1);
+        updateControlBar();
+    }
+
     private void updateControlBar() {
         ExoPlayer current = player;
-        XrRenderer xr = renderer;
-        if (current == null || xr == null) return;
-        long duration = current.getDuration();
-        long position = current.getCurrentPosition();
-        float progress = duration == C.TIME_UNSET || duration <= 0 ? 0.0f
-                : position / (float)duration;
-        xr.setVideoPlaybackState(current.getPlayWhenReady(), progress, position, duration);
+        long duration = current == null ? C.TIME_UNSET : current.getDuration();
+        long position = current == null ? 0 : current.getCurrentPosition();
+        boolean seekable = current != null && current.isCurrentMediaItemSeekable() && duration > 0;
+        seek.setEnabled(seekable);
+        if (!dragging) seek.setProgress(seekable ? (int)(1000.0 * position / duration) : 0);
+        clock.setText(MediaPlaybackTime.label(position, duration));
+        play.setText(current != null && current.getPlaybackState() != Player.STATE_ENDED && current.getPlayWhenReady()
+                ? R.string.window_pause : R.string.window_play);
+        play.setEnabled(current != null);
+        previous.setEnabled(current != null && current.hasPreviousMediaItem());
+        nextButton.setEnabled(current != null && current.hasNextMediaItem());
+    }
+
+    @Override protected void onStart() {
+        super.onStart();
+        visible = true;
+        if (player != null && resumePlayback) player.play();
+        resumePlayback = false;
+    }
+
+    @Override protected void onStop() {
+        visible = false;
+        if (player != null) {
+            resumePlayback = player.getPlayWhenReady();
+            player.pause();
+        }
+        super.onStop();
     }
 
     @Override
@@ -340,8 +404,7 @@ public final class VideoXrActivity extends Activity implements XrRenderer.InputL
         controlsHandler.removeCallbacks(controlsTicker);
         if (sourceThread != null) sourceThread.interrupt();
 
-        XrRenderer xr = renderer;
-        if (xr != null) xr.prepareForStop();
+
         ExoPlayer current = player;
         if (current != null) {
             Surface surface = videoSurface;
@@ -349,41 +412,12 @@ public final class VideoXrActivity extends Activity implements XrRenderer.InputL
             current.release();
             player = null;
         }
-        if (xr != null) {
-            xr.cleanup();
-            renderer = null;
+        if (rendererReady) {
+            panelRenderer.prepareForStop();
+            panelRenderer.cleanup();
         }
         videoSurface = null;
         super.onDestroy();
     }
 
-    @Override public void onVrPointerMove(float u, float v) { }
-    @Override public void onVrButton(int button, boolean down) { }
-    @Override public void onVrScroll(int clicks) { }
-    @Override public void onVrKey(int code) { }
-    @Override public void onVrVideoControl(int action, float value) {
-        runOnUiThread(() -> {
-            if (action == com.limelight.binding.video.XrShared.VIDEO_CONTROL_BACK) {
-                seekBy(-SEEK_STEP_MS);
-            } else if (action == com.limelight.binding.video.XrShared.VIDEO_CONTROL_TOGGLE) {
-                togglePlayback();
-            } else if (action == com.limelight.binding.video.XrShared.VIDEO_CONTROL_FORWARD) {
-                seekBy(SEEK_STEP_MS);
-            } else if (action == com.limelight.binding.video.XrShared.VIDEO_CONTROL_SEEK) {
-                seekToFraction(value);
-            } else if (action == com.limelight.binding.video.XrShared.VIDEO_CONTROL_PREVIOUS) {
-                ExoPlayer current = player;
-                if (current != null && current.hasPreviousMediaItem()) {
-                    current.seekToPreviousMediaItem();
-                }
-            } else if (action == com.limelight.binding.video.XrShared.VIDEO_CONTROL_NEXT) {
-                ExoPlayer current = player;
-                if (current != null && current.hasNextMediaItem()) {
-                    current.seekToNextMediaItem();
-                }
-            }
-            updateControlBar();
-        });
-    }
-    @Override public void onVrExit() { runOnUiThread(this::finish); }
 }

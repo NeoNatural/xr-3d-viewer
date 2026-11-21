@@ -335,7 +335,7 @@ int initGl(XrCtx* ctx) {
         LOGW("GL_EXT_sRGB_write_control not available, expect wrong gamma");
     }
 
-    if (!initAmbilight(ctx)) {
+    if (!ctx->windowMode && !initAmbilight(ctx)) {
         return 0;
     }
 
@@ -402,6 +402,26 @@ static void runOffsetSearch(XrCtx* ctx, float separation) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+static int bindVideoTarget(XrCtx* ctx) {
+    if (ctx->windowMode) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return 1;
+    }
+    uint32_t imageIndex = 0;
+    XrSwapchainImageAcquireInfo acquireInfo = { XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO };
+    if (!checkXr(xrAcquireSwapchainImage(ctx->swapchain, &acquireInfo, &imageIndex), "acquire image")) {
+        return 0;
+    }
+    XrSwapchainImageWaitInfo waitInfo = { XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
+    waitInfo.timeout = XR_INFINITE_DURATION;
+    xrWaitSwapchainImage(ctx->swapchain, &waitInfo);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                           ctx->swapchainImages[imageIndex].image, 0);
+    return 1;
+}
+
 void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation) {
     // Picks up whatever the stage thread most recently finished, once per
     // frame and before anything below samples a depth slot. The acquire is
@@ -420,7 +440,7 @@ void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation) {
     // Before the query opens, since creating the room's swapchain and buffers
     // inside the window wedges every sample after it. Only the CPU and buffer
     // work: the room's own draw is at the end of this function.
-    int roomOn = roomEffective(ctx) > 0;
+    int roomOn = !ctx->windowMode && roomEffective(ctx) > 0;
     if (roomOn) {
         prepareRoom(ctx);
     }
@@ -442,6 +462,7 @@ void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation) {
     int glowOn;
     float glowLevel;
     ambiEffective(ctx, &glowOn, &glowLevel);
+    if (ctx->windowMode) glowOn = 0;
     // The room is lit from the same colours the glow is made of, so the sample
     // is taken for either of them. It happens here rather than with the room's
     // draw, which now follows the video, so the room is lit from this frame's
@@ -454,9 +475,7 @@ void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation) {
         runGlowRender(ctx);
     }
 
-    uint32_t imageIndex = 0;
-    XrSwapchainImageAcquireInfo acquireInfo = { XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO };
-    if (!checkXr(xrAcquireSwapchainImage(ctx->swapchain, &acquireInfo, &imageIndex), "acquire image")) {
+    if (!bindVideoTarget(ctx)) {
         // The query opened above must not be left standing on this early out,
         // or the next frame's begin would nest inside it
         if (timing && !ctx->timerPending[ctx->timerSlot]) {
@@ -467,13 +486,6 @@ void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation) {
         }
         return;
     }
-    XrSwapchainImageWaitInfo waitInfo = { XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
-    waitInfo.timeout = XR_INFINITE_DURATION;
-    xrWaitSwapchainImage(ctx->swapchain, &waitInfo);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-                           ctx->swapchainImages[imageIndex].image, 0);
 
     if (ctx->srgbWriteControl) {
         glDisable(GL_FRAMEBUFFER_SRGB_EXT);
@@ -529,7 +541,10 @@ void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation) {
     }
 
     for (int eye = 0; eye < eyes; eye++) {
-        glViewport(eye * ctx->videoWidth, 0, ctx->videoWidth, ctx->videoHeight);
+        int w = ctx->windowMode ? ctx->panelEyeWidth : ctx->videoWidth;
+        int h = ctx->windowMode ? ctx->panelHeight : ctx->videoHeight;
+        int half = ctx->windowMode && ctx->panelSwapEyes ? eyes - 1 - eye : eye;
+        glViewport(half * w, 0, w, h);
         float disparity = 0.0f;
         if (eyes == 2 && ctx->stereoMode != DEPTH_MODE_EYETEST) {
             disparity = (eye == 0) ? separation : -separation;
@@ -556,7 +571,7 @@ void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation) {
 
     // Measure where the bar actually landed in each half. Positive shift
     // means content moved right in that eye
-    if (ctx->stereoMode == DEPTH_MODE_SHIFTTEST && ctx->barTestFramesLogged < 3) {
+    if (!ctx->windowMode && ctx->stereoMode == DEPTH_MODE_SHIFTTEST && ctx->barTestFramesLogged < 3) {
         int rowWidth = ctx->videoWidth * 2;
         unsigned char* row = malloc((size_t)rowWidth * 4);
         if (row != NULL) {
@@ -622,8 +637,10 @@ void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation) {
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    XrSwapchainImageReleaseInfo releaseInfo = { XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
-    xrReleaseSwapchainImage(ctx->swapchain, &releaseInfo);
+    if (!ctx->windowMode) {
+        XrSwapchainImageReleaseInfo releaseInfo = { XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
+        xrReleaseSwapchainImage(ctx->swapchain, &releaseInfo);
+    }
 
     // Close this frame's query and collect whichever earlier one has landed.
     // Never blocks: an unfinished query is simply left for a later frame.

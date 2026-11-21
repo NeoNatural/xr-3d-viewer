@@ -2,6 +2,7 @@
 // and the JNI entry points that bring the renderer up and take it down.
 #include "xr_renderer.h"
 #include "xr_depthmap.h"
+#include <android/native_window_jni.h>
 
 int checkXr(XrResult res, const char* what) {
     if (XR_FAILED(res)) {
@@ -28,7 +29,7 @@ static int initEgl(XrCtx* ctx) {
         EGL_BLUE_SIZE, 8,
         EGL_ALPHA_SIZE, 8,
         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
-        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT | (ctx->windowMode ? EGL_WINDOW_BIT : 0),
         EGL_NONE
     };
     EGLint numConfigs = 0;
@@ -586,6 +587,9 @@ static void destroyCtx(JNIEnv* env, XrCtx* ctx) {
         if (ctx->depthStageContext != EGL_NO_CONTEXT) {
             eglDestroyContext(ctx->eglDisplay, ctx->depthStageContext);
         }
+        if (ctx->panelSurface != EGL_NO_SURFACE) {
+            eglDestroySurface(ctx->eglDisplay, ctx->panelSurface);
+        }
         if (ctx->eglPbuffer != EGL_NO_SURFACE) {
             eglDestroySurface(ctx->eglDisplay, ctx->eglPbuffer);
         }
@@ -610,8 +614,11 @@ Java_com_limelight_binding_video_XrRenderer_nativeInit(JNIEnv* env, jobject thiz
                                                        jboolean handTracking, jint sharpenMode,
                                                        jboolean perfOverlay, jboolean ambilight,
                                                        jint ambiLevel, jboolean roomLight,
-                                                       jint envResTier, jint mediaControlsMode) {
+                                                       jint envResTier, jint mediaControlsMode,
+                                                       jboolean windowMode) {
     XrCtx* ctx = calloc(1, sizeof(XrCtx));
+    if (!ctx) return 0;
+    ctx->windowMode = windowMode;
     atomic_init(&ctx->stillDepthPending, 0);
     ctx->handsEnabled = handTracking;
     ctx->imageNavEnabled = mediaControlsMode == MEDIA_CONTROLS_IMAGES;
@@ -714,6 +721,15 @@ Java_com_limelight_binding_video_XrRenderer_nativeInit(JNIEnv* env, jobject thiz
     (*env)->GetJavaVM(env, &ctx->vm);
     ctx->activity = (*env)->NewGlobalRef(env, activity);
 
+    if (windowMode) {
+        if (!initEgl(ctx) || !initGl(ctx)) {
+            destroyCtx(env, ctx);
+            return 0;
+        }
+        LOGEV("Initialized window stereo renderer (depth mode %d)", ctx->stereoMode);
+        return (jlong)(intptr_t)ctx;
+    }
+
     if (!initXrInstance(ctx) || !initEgl(ctx) || !initXrSession(ctx) ||
             !initSwapchain(ctx) || !initGl(ctx)) {
         destroyCtx(env, ctx);
@@ -734,6 +750,56 @@ Java_com_limelight_binding_video_XrRenderer_nativeInit(JNIEnv* env, jobject thiz
          ctx->cylinderSupported, ctx->equirectSupported, ctx->srgbWriteControl,
          ctx->maxLayerCount);
     return (jlong)(intptr_t)ctx;
+}
+
+// Only the render thread changes its draw surface. The decoder texture and
+// the shared depth contexts survive panel resize, backgrounding and reattach.
+JNIEXPORT jboolean JNICALL
+Java_com_limelight_binding_video_XrRenderer_nativeSetPanelSurface(
+        JNIEnv* env, jobject thiz, jlong handle, jobject surface) {
+    XrCtx* ctx = (XrCtx*)(intptr_t)handle;
+    if (ctx->panelSurface != EGL_NO_SURFACE) {
+        if (!eglMakeCurrent(ctx->eglDisplay, ctx->eglPbuffer, ctx->eglPbuffer,
+                            ctx->eglContext)) return JNI_FALSE;
+        eglDestroySurface(ctx->eglDisplay, ctx->panelSurface);
+        ctx->panelSurface = EGL_NO_SURFACE;
+    }
+    if (!surface) return JNI_TRUE;
+    ANativeWindow* window = ANativeWindow_fromSurface(env, surface);
+    if (!window) return JNI_FALSE;
+    ctx->panelSurface = eglCreateWindowSurface(ctx->eglDisplay, ctx->eglConfig, window, NULL);
+    ANativeWindow_release(window);
+    if (ctx->panelSurface == EGL_NO_SURFACE ||
+            !eglMakeCurrent(ctx->eglDisplay, ctx->panelSurface, ctx->panelSurface,
+                            ctx->eglContext)) {
+        LOGE("Could not bind panel surface: EGL 0x%x", eglGetError());
+        return JNI_FALSE;
+    }
+    return JNI_TRUE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_limelight_binding_video_XrRenderer_nativeDrawPanel(
+        JNIEnv* env, jobject thiz, jlong handle, jfloatArray matrix, jfloat separation,
+        jfloat convergence, jboolean eyeSwap, jfloat refreshHz) {
+    XrCtx* ctx = (XrCtx*)(intptr_t)handle;
+    EGLint width, height;
+    if (!eglQuerySurface(ctx->eglDisplay, ctx->panelSurface, EGL_WIDTH, &width) ||
+            !eglQuerySurface(ctx->eglDisplay, ctx->panelSurface, EGL_HEIGHT, &height)) {
+        return JNI_FALSE;
+    }
+    ctx->panelEyeWidth = ctx->stereoMode == DEPTH_MODE_OFF ? width : width / 2;
+    ctx->panelHeight = height;
+    ctx->panelSwapEyes = eyeSwap;
+    ctx->convergence = convergence;
+    float texMatrix[16];
+    (*env)->GetFloatArrayRegion(env, matrix, 0, 16, texMatrix);
+    if (atomic_load_explicit(&ctx->stillDepthPending, memory_order_acquire)) separation = 0;
+    ctx->separationCurrent = separation;
+    int64_t startNs = nowNs();
+    renderVideoFrame(ctx, texMatrix, separation);
+    if (ctx->depthVideoSession) updateVideoDepthBudget(ctx, startNs, refreshHz);
+    return eglSwapBuffers(ctx->eglDisplay, ctx->panelSurface) == EGL_TRUE;
 }
 
 JNIEXPORT void JNICALL

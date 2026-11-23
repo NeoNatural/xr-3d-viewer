@@ -1,6 +1,5 @@
 package com.limelight;
 
-import android.app.Activity;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
@@ -14,11 +13,10 @@ import com.limelight.utils.UiHelper;
 import com.limelight.utils.WarningDialog;
 
 /** Media-first launcher. The former GameStream host grid no longer participates in startup. */
-public final class PcView extends Activity {
+public final class PcView extends EnglishActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        UiHelper.setLocale(this);
         PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
         setContentView(R.layout.activity_pc_view);
         UiHelper.notifyNewRootView(this);
@@ -31,6 +29,13 @@ public final class PcView extends Activity {
                 startActivity(new Intent(this, LocalBrowserActivity.class)));
         findViewById(R.id.browseSmb).setOnClickListener(v ->
                 startActivity(new Intent(this, SmbBrowserActivity.class)));
+        android.view.View webVideo = findViewById(R.id.browseWeb);
+        if (getResources().getBoolean(R.bool.web_video_available)) {
+            webVideo.setOnClickListener(v -> startActivity(new Intent(this,
+                    com.limelight.web.WebBrowserActivity.class)));
+        } else {
+            webVideo.setVisibility(android.view.View.GONE);
+        }
         findViewById(R.id.settingsButton).setOnClickListener(v ->
                 startActivity(new Intent(this, StreamSettings.class)));
 

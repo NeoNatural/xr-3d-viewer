@@ -159,6 +159,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private final AtomicReference<Float> pendingVideoAspect = new AtomicReference<>();
     private Context prefsContext;
     private PreferenceConfiguration prefConfig;
+    private static final String EDGE_CORRECTION_PREF = "vr_edge_correction";
     private volatile float currentDisplayAspect = 9.0f / 16.0f;
 
     // The 360 photo shown behind the screen. Decoded off the frame loop and
@@ -359,7 +360,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     // 2 high, 3 ultra
     private native long nativeInit(Activity activity, int width, int height, int stereoMode,
                                    int depthWidth, int depthHeight,
-                                   boolean depthDebug, int convergence, int depthScale,
+                                   boolean depthDebug, int convergence, boolean edgeCorrection, int depthScale,
                                    boolean handTracking, int sharpenMode, boolean perfOverlay,
                                    boolean ambilight, int ambiLevel, boolean roomLight,
                                    int envResTier, int mediaControlsMode);
@@ -417,9 +418,17 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
 
     public boolean start(final Activity activity, final int videoWidth, final int videoHeight,
                          final PreferenceConfiguration prefs) {
+        return start(activity, videoWidth, videoHeight, videoWidth, videoHeight, prefs);
+    }
+
+    /** The web compositor can supply a higher-resolution source than the stereo swapchain. */
+    public boolean start(final Activity activity, final int videoWidth, final int videoHeight,
+                         final int inputWidth, final int inputHeight, final PreferenceConfiguration prefs) {
         prefsContext = activity.getApplicationContext();
         currentDisplayAspect = videoWidth > 0 ? (float) videoHeight / videoWidth : 9.0f / 16.0f;
         applyMediaPreferences(prefs);
+        final boolean edgeCorrection = PreferenceManager.getDefaultSharedPreferences(prefsContext)
+                .getBoolean(preferenceKey(EDGE_CORRECTION_PREF), false);
         final CountDownLatch initLatch = new CountDownLatch(1);
         final boolean[] initOk = new boolean[1];
 
@@ -455,7 +464,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 DepthSize mapSize = depthRoute.size;
                 nativeCtx = nativeInit(activity, videoWidth, videoHeight, prefs.vrDepthMode,
                         mapSize.width, mapSize.height,
-                        prefs.vrDepthDebug, prefs.vrConvergence, prefs.vrDepthScale,
+                        prefs.vrDepthDebug, prefs.vrConvergence, edgeCorrection, prefs.vrDepthScale,
                         prefs.vrHandTracking, prefs.vrSharpening, prefs.enablePerfOverlay,
                         prefs.vrAmbilight, prefs.vrAmbilightLevel, prefs.vrRoomLight,
                         prefs.vrEnvResTier, imageNavigationEnabled ? MEDIA_CONTROLS_IMAGES
@@ -482,7 +491,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 // The EGL context is current on this thread now, so the
                 // SurfaceTexture attaches to it here
                 surfaceTexture = new SurfaceTexture(nativeGetTexId(nativeCtx));
-                surfaceTexture.setDefaultBufferSize(videoWidth, videoHeight);
+                surfaceTexture.setDefaultBufferSize(inputWidth, inputHeight);
                 surfaceTexture.setOnFrameAvailableListener(XrRenderer.this);
                 inputSurface = new Surface(surfaceTexture);
 
@@ -1113,8 +1122,8 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
             curveOk = nativeCtx != 0 && nativeGetCylinderSupported(nativeCtx);
         }
         // Same for the 3D rows with stereo turned off in settings
-        boolean stereoOk = prefConfig != null && prefConfig.vrDepthMode != DEPTH_MODE_OFF;
-        ByteBuffer[] tabs = panels.buildCogTabs(curveOk, stereoOk);
+        int depthMode = prefConfig == null ? DEPTH_MODE_OFF : prefConfig.vrDepthMode;
+        ByteBuffer[] tabs = panels.buildCogTabs(curveOk, depthMode);
         pendingCogScreenTab.set(tabs[0]);
         pendingCogDisplayTab.set(tabs[1]);
         pendingCog3dTab.set(tabs[2]);
@@ -1489,13 +1498,18 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                     .putInt(preferenceKey(PreferenceConfiguration.VR_CONVERGENCE_PREF_STRING), value)
                     .apply();
         }
+        else if (setting == SETTING_EDGE_CORRECTION) {
+            PreferenceManager.getDefaultSharedPreferences(prefsContext).edit()
+                    .putBoolean(preferenceKey(EDGE_CORRECTION_PREF), value != 0)
+                    .apply();
+        }
         else if (setting == SETTING_RESET_3D) {
-            // Both at once, since the reset button moved both
             if (prefConfig != null) {
                 prefConfig.vrStereoSeparation = PreferenceConfiguration.DEFAULT_VR_SEPARATION;
                 prefConfig.vrConvergence = PreferenceConfiguration.DEFAULT_VR_CONVERGENCE;
             }
             PreferenceManager.getDefaultSharedPreferences(prefsContext).edit()
+                    .putBoolean(preferenceKey(EDGE_CORRECTION_PREF), false)
                     .putInt(preferenceKey(PreferenceConfiguration.VR_SEPARATION_PREF_STRING),
                             PreferenceConfiguration.DEFAULT_VR_SEPARATION)
                     .putInt(preferenceKey(PreferenceConfiguration.VR_CONVERGENCE_PREF_STRING),

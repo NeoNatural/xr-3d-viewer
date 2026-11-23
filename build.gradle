@@ -13,6 +13,10 @@ allprojects {
     repositories {
         mavenCentral()
         google()
+        exclusiveContent {
+            forRepository { maven { url 'https://maven.mozilla.org/maven2/' } }
+            filter { includeGroup 'org.mozilla.geckoview' }
+        }
         maven { url 'https://jitpack.io' }
     }
 }

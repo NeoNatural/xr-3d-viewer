@@ -25,6 +25,13 @@ The repository and its history retain upstream copyright and authorship
 notices. Modifications made for this project are likewise released under
 GPL-3.0-only.
 
+## Mozilla GeckoView
+
+The in-app browser embeds Mozilla GeckoView, distributed under the Mozilla Public
+License 2.0. Mozilla publishes the corresponding sources alongside the binary at
+[Mozilla Maven](https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/160.0.20261116130455/).
+The engine includes additional components listed in its `about:license` page.
+
 ## Components covered by permissive licenses
 
 The following runtime components are compatible with the application's GPLv3

@@ -1,6 +1,5 @@
 package com.limelight;
 
-import android.app.Activity;
 import android.content.Intent;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
@@ -37,7 +36,7 @@ import java.util.List;
 
 /** Plays a local video through the existing OpenXR depth and stereo renderer. */
 @OptIn(markerClass = UnstableApi.class)
-public final class VideoXrActivity extends Activity implements XrRenderer.InputListener {
+public final class VideoXrActivity extends EnglishActivity implements XrRenderer.InputListener {
     public static final String EXTRA_VIDEO_URIS = "videoUris";
     public static final String EXTRA_SMB_VIDEO_URIS = "smbVideoUris";
     public static final String EXTRA_START_INDEX = "startIndex";

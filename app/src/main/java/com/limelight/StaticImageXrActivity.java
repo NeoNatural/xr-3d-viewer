@@ -1,6 +1,5 @@
 package com.limelight;
 
-import android.app.Activity;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -48,7 +47,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.List;
 
 /** A local image probe for the existing XR depth and stereo pipeline. */
-public class StaticImageXrActivity extends Activity implements XrRenderer.InputListener {
+public class StaticImageXrActivity extends EnglishActivity implements XrRenderer.InputListener {
     public static final String EXTRA_SMB_URI = "smbUri";
     public static final String EXTRA_SMB_DIRECTORY = "smbDirectory";
     public static final String EXTRA_OPEN_STARTED_NS = "openStartedNs";

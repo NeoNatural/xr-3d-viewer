@@ -1,6 +1,5 @@
 package com.limelight;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
@@ -44,7 +43,7 @@ import java.util.zip.GZIPOutputStream;
  * the log first and the email is a second step that may not be possible. In
  * that case the user is told where the file is and where to send it.
  */
-public class BugReportActivity extends Activity {
+public class BugReportActivity extends EnglishActivity {
     public static final String REPORT_ADDRESS = "hello@seangilleece.com";
 
     // Remembered between reports, since it is the one field that never changes
@@ -57,7 +56,6 @@ public class BugReportActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        UiHelper.setLocale(this);
         setContentView(R.layout.activity_bug_report);
         UiHelper.notifyNewRootView(this);
 

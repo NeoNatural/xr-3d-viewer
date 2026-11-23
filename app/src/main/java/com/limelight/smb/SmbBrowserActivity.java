@@ -1,6 +1,5 @@
 package com.limelight.smb;
 
-import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.InputType;
@@ -15,6 +14,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.limelight.EnglishActivity;
 import com.limelight.R;
 import com.limelight.PcView;
 import com.limelight.StaticImageXrActivity;
@@ -34,7 +34,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /** Minimal direct SMB browser. Network operations never run on the UI thread. */
-public final class SmbBrowserActivity extends Activity {
+public final class SmbBrowserActivity extends EnglishActivity {
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private final Deque<String> parents = new ArrayDeque<>();
     private final List<MediaEntry> entries = new ArrayList<>();

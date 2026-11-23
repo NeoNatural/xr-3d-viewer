@@ -616,18 +616,21 @@ static void addCogLayers(XrCtx* ctx, const FrameView* view, FrameLayers* layers)
         // chosen and what is under the ray are rings over them, the same
         // trick the picker uses to mark cells without an upload. One per
         // row for the choice, then a wider one for the hover.
-        if (ctx->cogTab == COG_TAB_DISPLAY && ctx->outlineReady) {
-            for (int m = 0; m <= COG_OPTION_COUNT; m++) {
-                int hoverMark = m == COG_OPTION_COUNT;
-                int option = hoverMark ? ctx->cogHoverSlider : m;
+        int edgeRow = ctx->cogTab == COG_TAB_3D && ctx->stereoMode == DEPTH_MODE_MODEL;
+        if ((ctx->cogTab == COG_TAB_DISPLAY || edgeRow) && ctx->outlineReady) {
+            int first = edgeRow ? COG_ROW3D_EDGE : 0;
+            int countRows = edgeRow ? 1 : COG_OPTION_COUNT;
+            for (int m = 0; m <= countRows; m++) {
+                int hoverMark = m == countRows;
+                int option = hoverMark ? ctx->cogHoverSlider : first + m;
                 int cell = hoverMark ? ctx->cogHoverCell
-                        : cogOptionValue(ctx, m, view->headLocked);
-                if (option < 0 || option >= COG_OPTION_COUNT || cell < 0) {
+                        : cogOptionValue(ctx, option, view->headLocked);
+                if (option < first || option >= first + countRows || cell < 0) {
                     continue;
                 }
                 float scale = hoverMark ? 1.12f : 1.0f;
 
-                int count = cogOptionCells(option);
+                int count = cogOptionCells(ctx->cogTab, option);
                 float span = (COG_TRACK_R - COG_TRACK_L) / count;
                 Vec3 local;
                 local.x = (COG_TRACK_L + (cell + 0.5f) * span - 0.5f) * ctx->cogW;
@@ -647,14 +650,14 @@ static void addCogLayers(XrCtx* ctx, const FrameView* view, FrameLayers* layers)
         // over it either
         if (ctx->cogThumbReady && !cogScreenLocked(ctx)) {
             float thumbSize = ctx->cogH * 0.085f;
-            int rowCount = cogTabRowCount(ctx->cogTab);
+            int rowCount = cogTabRowCount(ctx);
             for (int s = 0; s < rowCount; s++) {
                 // No thumb on a row that cannot be dragged
                 if (ctx->cogTab == COG_TAB_SCREEN && s == COG_SLIDER_CURVE
                         && !ctx->cylinderSupported) {
                     continue;
                 }
-                if (ctx->cogTab == COG_TAB_3D && ctx->stereoMode == DEPTH_MODE_OFF) {
+                if (ctx->cogTab == COG_TAB_3D && (ctx->stereoMode == DEPTH_MODE_OFF || s == COG_ROW3D_EDGE)) {
                     continue;
                 }
                 // Which on the display tab is every row but the level one,
@@ -826,19 +829,20 @@ Java_com_limelight_binding_video_XrRenderer_nativeEndFrame(JNIEnv* env, jobject 
     // Video naturally redraws on each decoded frame. A still image has no new
     // SurfaceTexture frame while its 3D controls move, so explicitly rerun the
     // warp with the retained colour and depth textures for those adjustments.
-    if ((newFrame || ctx->stereoRedrawPending) && ctx->shouldRender) {
+    if (newFrame) ctx->stereoRedrawPending = 1;
+    int edgeChanged = ctx->everRendered && ctx->edgeCorrection != ctx->drawnEdgeCorrection;
+    if ((ctx->stereoRedrawPending || edgeChanged) && ctx->shouldRender) {
         long startNs = nowNs();
 
         float texMatrix[16];
         (*env)->GetFloatArrayRegion(env, texMatrixArr, 0, 16, texMatrix);
-        renderVideoFrame(ctx, texMatrix, separation);
+        renderVideoFrame(ctx, texMatrix, separation, ctx->stereoRedrawPending);
 
         long elapsed = nowNs() - startNs;
         ctx->statFrames++;
         ctx->statTotalNs += elapsed;
         if (elapsed > ctx->statMaxNs) ctx->statMaxNs = elapsed;
         logWarpStats(ctx);
-        ctx->stereoRedrawPending = 0;
     }
 
     FrameView view;

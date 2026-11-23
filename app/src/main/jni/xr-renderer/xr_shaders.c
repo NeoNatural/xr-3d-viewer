@@ -28,6 +28,7 @@ const char* const FRAGMENT_SRC =
     "uniform float u_showDepth;\n"
     "uniform float u_barTest;\n"
     "uniform vec3 u_tint;\n"
+    "uniform bool u_edgeCorrection;\n"
     "uniform float u_occlusion;\n"
     "uniform float u_eyeIndex;\n"
     "uniform float u_convergence;\n"
@@ -35,6 +36,21 @@ const char* const FRAGMENT_SRC =
     "uniform float u_lowResWidth;\n"
     "uniform float u_frameWidth;\n"
     "out vec4 fragColor;\n"
+    // Neighboring offset rows choose their visible surfaces independently.
+    // Reconstruct the seed vertically with a cubic B-spline. Folding four
+    // row weights into two linear reads preserves horizontal sampling.
+    "vec2 offsetAt(vec2 uv) {\n"
+    "    float rows = float(textureSize(u_offsets, 0).y);\n"
+    "    float y = uv.y * rows - 0.5;\n"
+    "    float f = fract(y), t = 1.0 - f;\n"
+    "    float w0 = t*t*t / 6.0, w3 = f*f*f / 6.0;\n"
+    "    float w1 = (4.0 - 6.0*f*f + 3.0*f*f*f) / 6.0;\n"
+    "    float a = w0 + w1, b = 1.0 - a;\n"
+    "    float base = floor(y) + 0.5;\n"
+    "    vec2 lo = texture(u_offsets, vec2(uv.x, (base - w0/a) / rows)).rg;\n"
+    "    vec2 hi = texture(u_offsets, vec2(uv.x, (base + 1.0 + w3/b) / rows)).rg;\n"
+    "    return a * lo + b * hi;\n"
+    "}\n"
     "void main() {\n"
     "    float d = texture(u_depth, v_plain).a;\n"
     "    if (u_showDepth > 0.5) {\n"
@@ -46,11 +62,10 @@ const char* const FRAGMENT_SRC =
     // The offset map already picked the right surface. All that is left is
     // the exact position on it, which the low resolution search only knew to
     // within a texel, and that quantization stair steps along a diagonal
-    // silhouette. Two Newton steps against the full resolution depth settle
-    // it to well under a pixel.
+    // silhouette. Refine against the interpolated depth at eye resolution.
     "        int reach = int(ceil(abs(u_dispTexels)\n"
     "                        * max(u_convergence, 1.0 - u_convergence))) + 2;\n"
-    "        vec2 enc = texture(u_offsets, v_plain).rg;\n"
+    "        vec2 enc = u_edgeCorrection ? offsetAt(v_plain) : texture(u_offsets, v_plain).rg;\n"
     "        float off = (u_eyeIndex < 0.5 ? enc.r : enc.g) - 0.5;\n"
     "        tc.x = v_plain.x + off * 2.0 * float(reach) / u_lowResWidth;\n"
     "        float h = 1.0 / u_frameWidth;\n"
@@ -59,10 +74,11 @@ const char* const FRAGMENT_SRC =
     "            float dm = texture(u_depth, vec2(tc.x - h, v_plain.y)).a;\n"
     "            float dp = texture(u_depth, vec2(tc.x + h, v_plain.y)).a;\n"
     "            float e = (tc.x - v_plain.x) + u_disparity * (d0 - u_convergence);\n"
+    // At an occlusion fold the local projection can run backwards. Keep
+    // the correction direction consistent with the visible branch so a
+    // steep silhouette does not pick up extra foreground/background crossings.
     "            float slope = 1.0 + u_disparity * (dp - dm) / (2.0 * h);\n"
-    "            if (abs(slope) < 0.25) {\n"
-    "                slope = 0.25;\n"
-    "            }\n"
+    "            if ((u_edgeCorrection ? slope : abs(slope)) < 0.25) slope = 0.25;\n"
     "            tc.x -= clamp(e / slope, -4.0 * h, 4.0 * h);\n"
     "        }\n"
     "    }\n"

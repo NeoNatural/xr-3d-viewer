@@ -1,21 +1,20 @@
 package com.limelight.preferences;
 
-import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
 import android.preference.PreferenceFragment;
 
+import com.limelight.EnglishActivity;
 import com.limelight.BugReportActivity;
 import com.limelight.LegalNoticesActivity;
 import com.limelight.R;
 import com.limelight.utils.UiHelper;
 
 /** Settings used by standalone image and video playback. */
-public final class StreamSettings extends Activity {
+public final class StreamSettings extends EnglishActivity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        UiHelper.setLocale(this);
         setContentView(R.layout.activity_stream_settings);
         findViewById(R.id.settings_back).setOnClickListener(v -> finish());
         getFragmentManager().beginTransaction()

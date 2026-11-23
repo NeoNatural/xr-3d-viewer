@@ -1,0 +1,3 @@
+<resources>
+    <bool name="web_video_available">false</bool>
+</resources>

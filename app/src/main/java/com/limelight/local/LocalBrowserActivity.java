@@ -1,6 +1,5 @@
 package com.limelight.local;
 
-import android.app.Activity;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -22,6 +21,7 @@ import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.limelight.EnglishActivity;
 import com.limelight.R;
 import com.limelight.PcView;
 import com.limelight.StaticImageXrActivity;
@@ -42,7 +42,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /** Storage Access Framework browser with the same photo/video behaviour as SMB. */
-public final class LocalBrowserActivity extends Activity {
+public final class LocalBrowserActivity extends EnglishActivity {
     private static final int PICK_TREE = 1;
     private static final String PREFS = "local_media_browser";
     private static final String LAST_TREE = "last_tree";

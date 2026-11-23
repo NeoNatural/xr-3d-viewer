@@ -130,6 +130,7 @@
 #define SETTING_AMBI_LEVEL 6
 #define SETTING_ROOM_LIGHT 7
 #define SETTING_HEAD_LOCK 8
+#define SETTING_EDGE_CORRECTION 9
 
 // Which Environment Res tier the room draws at
 #define ENV_RES_LOW 0
@@ -209,12 +210,13 @@
 #define COG_SLIDER_SIZE     5
 #define COG_SLIDER_COUNT    6
 
-// 3D tab rows, sliders like the screen tab's. Only values that take effect the
+// 3D tab rows, two sliders and an algorithm selector. Only values that take effect the
 // moment they move belong here: the depth source itself is settled when the
 // session starts, so it stays in the 2d settings.
 #define COG_ROW3D_SEPARATION 0
 #define COG_ROW3D_CONVERGENCE 1
-#define COG_ROW3D_COUNT 2
+#define COG_ROW3D_EDGE 2
+#define COG_ROW3D_COUNT 3
 // Allow stronger disparity for images with weak model depth, while preserving
 // the existing 0.5 percent default and keeping the full range user controlled.
 #define COG_SEP_MAX 0.030f

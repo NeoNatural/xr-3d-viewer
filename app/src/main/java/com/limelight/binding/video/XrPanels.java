@@ -15,6 +15,7 @@ import android.graphics.Shader;
 import android.graphics.Typeface;
 
 import com.limelight.LimeLog;
+import com.limelight.R;
 import com.limelight.preferences.PreferenceConfiguration;
 
 import java.io.IOException;
@@ -504,16 +505,16 @@ final class XrPanels {
      * and cells live in the texture: thumbs and selection rings are quads of
      * their own, so using the panel costs no upload.
      */
-    ByteBuffer[] buildCogTabs(boolean curveOk, boolean stereoOk) {
-        Bitmap screenTab = buildCogTab(COG_TAB_SCREEN, curveOk, stereoOk);
+    ByteBuffer[] buildCogTabs(boolean curveOk, int depthMode) {
+        Bitmap screenTab = buildCogTab(COG_TAB_SCREEN, curveOk, depthMode);
         ByteBuffer screen = toBuffer(screenTab);
         screenTab.recycle();
 
-        Bitmap displayTab = buildCogTab(COG_TAB_DISPLAY, curveOk, stereoOk);
+        Bitmap displayTab = buildCogTab(COG_TAB_DISPLAY, curveOk, depthMode);
         ByteBuffer display = toBuffer(displayTab);
         displayTab.recycle();
 
-        Bitmap tab3d = buildCogTab(COG_TAB_3D, curveOk, stereoOk);
+        Bitmap tab3d = buildCogTab(COG_TAB_3D, curveOk, depthMode);
         ByteBuffer sheet3d = toBuffer(tab3d);
         tab3d.recycle();
 
@@ -548,7 +549,7 @@ final class XrPanels {
         return bitmap;
     }
 
-    private Bitmap buildCogTab(int tab, boolean curveOk, boolean stereoOk) {
+    private Bitmap buildCogTab(int tab, boolean curveOk, int depthMode) {
         Bitmap bitmap = Bitmap.createBitmap(COG_TEX_W, COG_TEX_H, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         drawCogChrome(canvas, tab);
@@ -556,7 +557,7 @@ final class XrPanels {
             drawCogSliderRows(canvas, curveOk);
         }
         else if (tab == COG_TAB_3D) {
-            drawCog3dRows(canvas, stereoOk);
+            drawCog3dRows(canvas, depthMode);
         }
         else {
             drawCogOptionRows(canvas);
@@ -698,7 +699,8 @@ final class XrPanels {
     // 3D tab: the two values worth reaching mid stream. Depth runs past the
     // comfortable range on purpose, with the far end marked, since where that
     // range ends is a matter of eyes rather than of hardware.
-    private void drawCog3dRows(Canvas canvas, boolean stereoOk) {
+    private void drawCog3dRows(Canvas canvas, int depthMode) {
+        boolean stereoOk = depthMode != DEPTH_MODE_OFF;
         Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
         text.setTextSize(22.0f);
         text.setTextAlign(Paint.Align.LEFT);
@@ -752,6 +754,16 @@ final class XrPanels {
             canvas.drawRect(markX - 2.0f, y - tickHalf, markX + 2.0f, y + tickHalf, tick);
         }
 
+        if (depthMode == DEPTH_MODE_MODEL) {
+            float y = (COG_ROW_V0 + COG_ROW3D_EDGE * COG_ROW_STEP) * COG_TEX_H;
+            canvas.drawText(context.getString(R.string.xr_edge_correction), 0.06f * COG_TEX_W,
+                    y - (text.ascent() + text.descent()) * 0.5f, text);
+            drawCogCells(canvas, COG_ROW3D_EDGE, new String[] {
+                    context.getString(R.string.xr_edge_original),
+                    context.getString(R.string.xr_edge_corrected)
+            });
+        }
+
         // A way back from a pair of values that turned out to be unwatchable
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setColor(0xEEFFFFFF);
@@ -777,15 +789,7 @@ final class XrPanels {
         }
     }
 
-    // Display tab: a label and a row of cells, one press wide each. Which cell
-    // is in force and which is under the ray are rings the native side puts
-    // over them, so nothing here has to be redrawn when one is chosen.
-    private void drawCogOptionRows(Canvas canvas) {
-        Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
-        label.setTextSize(22.0f);
-        label.setTextAlign(Paint.Align.LEFT);
-        label.setColor(Color.WHITE);
-
+    private void drawCogCells(Canvas canvas, int row, String[] names) {
         Paint cellText = new Paint(Paint.ANTI_ALIAS_FLAG);
         cellText.setTextSize(19.0f);
         cellText.setTextAlign(Paint.Align.CENTER);
@@ -797,31 +801,45 @@ final class XrPanels {
         final float trackR = COG_TRACK_R * COG_TEX_W;
         final float cellHalf = COG_CELL_HALF * COG_TEX_H;
 
+        float y = (COG_ROW_V0 + row * COG_ROW_STEP) * COG_TEX_H;
+        float span = (trackR - trackL) / names.length;
+        for (int i = 0; i < names.length; i++) {
+            // Inset so neighbours read as separate buttons rather than one
+            // long strip
+            RectF box = new RectF(trackL + i * span + 3.0f, y - cellHalf,
+                    trackL + (i + 1) * span - 3.0f, y + cellHalf);
+
+            cell.setStyle(Paint.Style.FILL);
+            cell.setColor(0x28FFFFFF);
+            canvas.drawRoundRect(box, 10.0f, 10.0f, cell);
+            cell.setStyle(Paint.Style.STROKE);
+            cell.setStrokeWidth(2.0f);
+            cell.setColor(0x50FFFFFF);
+            canvas.drawRoundRect(box, 10.0f, 10.0f, cell);
+
+            canvas.drawText(names[i], box.centerX(),
+                    box.centerY() - (cellText.ascent() + cellText.descent()) * 0.5f,
+                    cellText);
+        }
+    }
+
+    // Display tab: a label and a row of cells, one press wide each. Which cell
+    // is in force and which is under the ray are rings the native side puts
+    // over them, so nothing here has to be redrawn when one is chosen.
+    private void drawCogOptionRows(Canvas canvas) {
+        Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
+        label.setTextSize(22.0f);
+        label.setTextAlign(Paint.Align.LEFT);
+        label.setColor(Color.WHITE);
+
+        final float trackL = COG_TRACK_L * COG_TEX_W;
+        final float trackR = COG_TRACK_R * COG_TEX_W;
+        final float cellHalf = COG_CELL_HALF * COG_TEX_H;
         for (int row = 0; row < COG_OPTION_ROWS.length; row++) {
             float y = (COG_ROW_V0 + row * COG_ROW_STEP) * COG_TEX_H;
             canvas.drawText(COG_OPTION_ROWS[row], 0.06f * COG_TEX_W,
                     y - (label.ascent() + label.descent()) * 0.5f, label);
-
-            String[] names = COG_OPTION_CELLS[row];
-            float span = (trackR - trackL) / names.length;
-            for (int i = 0; i < names.length; i++) {
-                // Inset so neighbours read as separate buttons rather than one
-                // long strip
-                RectF box = new RectF(trackL + i * span + 3.0f, y - cellHalf,
-                        trackL + (i + 1) * span - 3.0f, y + cellHalf);
-
-                cell.setStyle(Paint.Style.FILL);
-                cell.setColor(0x28FFFFFF);
-                canvas.drawRoundRect(box, 10.0f, 10.0f, cell);
-                cell.setStyle(Paint.Style.STROKE);
-                cell.setStrokeWidth(2.0f);
-                cell.setColor(0x50FFFFFF);
-                canvas.drawRoundRect(box, 10.0f, 10.0f, cell);
-
-                canvas.drawText(names[i], box.centerX(),
-                        box.centerY() - (cellText.ascent() + cellText.descent()) * 0.5f,
-                        cellText);
-            }
+            drawCogCells(canvas, row, COG_OPTION_CELLS[row]);
         }
 
         // How strong the glow is, a track under the cells and the only row on

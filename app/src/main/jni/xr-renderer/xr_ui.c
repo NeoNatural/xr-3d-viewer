@@ -339,12 +339,13 @@ int exitPromptZone(float u, float v) {
 }
 
 // How many rows a tab has, whatever kind they are
-int cogTabRowCount(int tab) {
+int cogTabRowCount(XrCtx* ctx) {
+    int tab = ctx->cogTab;
     if (tab == COG_TAB_SCREEN) {
         return COG_SLIDER_COUNT;
     }
     if (tab == COG_TAB_3D) {
-        return COG_ROW3D_COUNT;
+        return ctx->stereoMode == DEPTH_MODE_MODEL ? COG_ROW3D_COUNT : COG_ROW3D_EDGE;
     }
     // The option rows, then the glow level track under them
     return COG_DISPLAY_SLIDER_ROW + 1;
@@ -516,7 +517,8 @@ void cogApplySlider(XrCtx* ctx, int tab, int slider, float pu) {
 }
 
 // The option rows on the display tab are a row of cells rather than a track
-int cogOptionCells(int option) {
+int cogOptionCells(int tab, int option) {
+    if (tab == COG_TAB_3D) return 2;
     if (option == COG_OPTION_SHARPEN) {
         return COG_SHARPEN_CELLS;
     }
@@ -536,6 +538,7 @@ int cogOptionCells(int option) {
 // does not keep: it arrives with the frame, and reading it back means the ring
 // still tells the truth if something outside the panel changes it.
 int cogOptionValue(XrCtx* ctx, int option, int headLocked) {
+    if (ctx->cogTab == COG_TAB_3D) return ctx->edgeCorrection;
     if (option == COG_OPTION_SHARPEN) {
         return ctx->sharpenMode;
     }
@@ -555,6 +558,10 @@ int cogOptionValue(XrCtx* ctx, int option, int headLocked) {
 // tell Java to store it too. Both of these are read fresh every frame by the
 // code that acts on them, so there is nothing to restart.
 int cogApplyOption(XrCtx* ctx, int option, int cell) {
+    if (ctx->cogTab == COG_TAB_3D) {
+        ctx->edgeCorrection = cell != 0;
+        return SETTING_EDGE_CORRECTION;
+    }
     if (option == COG_OPTION_SHARPEN) {
         ctx->sharpenMode = cell;
         return SETTING_SHARPEN;

@@ -385,4 +385,16 @@
     <string name="browse_smb">Browse SMB</string>
 
     <string name="vr_depth_source_zipdepth">ZipDepth Video 3D (Recommended)</string>
+    <string name="browse_web_video">Online videos</string>
+    <string name="web_enter_url">Enter URL</string>
+    <string name="web_open_url">Open</string>
+    <string name="web_invalid_url">Enter a website address, such as example.com.</string>
+    <string name="web_bilibili">Bilibili</string>
+    <string name="web_watch_3d">Watch in 3D</string>
+    <string name="web_xr_failed">The 3D player could not display this video.</string>
+    <string name="web_crash">The web page stopped responding. Reopen the video.</string>
+    <string name="web_full_resolution">4K per eye</string>
+    <string name="xr_edge_correction">Edge correction</string>
+    <string name="xr_edge_original">Original</string>
+    <string name="xr_edge_corrected">Corrected</string>
 </resources>

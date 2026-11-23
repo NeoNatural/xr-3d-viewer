@@ -1348,7 +1348,7 @@ static void updateCogPanel(XrCtx* ctx, InputFrame* f) {
             break;
         }
 
-        int rowCount = cogTabRowCount(ctx->cogTab);
+        int rowCount = cogTabRowCount(ctx);
         int row = -1;
         for (int s = 0; s < rowCount; s++) {
             // Curving needs a layer type this runtime may not have, and
@@ -1368,7 +1368,8 @@ static void updateCogPanel(XrCtx* ctx, InputFrame* f) {
             }
         }
 
-        if (ctx->cogTab == COG_TAB_DISPLAY) {
+        if (ctx->cogTab == COG_TAB_DISPLAY
+                || (ctx->cogTab == COG_TAB_3D && row == COG_ROW3D_EDGE)) {
             if (row == COG_DISPLAY_SLIDER_ROW) {
                 // The one track on this tab, handled the way the other
                 // tabs' rows are, including the band reaching a little
@@ -1388,7 +1389,7 @@ static void updateCogPanel(XrCtx* ctx, InputFrame* f) {
             }
 
             // Cells, so a press picks one rather than starting a drag
-            int cell = row >= 0 ? cogCellAt(pu, cogOptionCells(row)) : -1;
+            int cell = row >= 0 ? cogCellAt(pu, cogOptionCells(ctx->cogTab, row)) : -1;
             ctx->cogHoverSlider = cell >= 0 ? row : -1;
             ctx->cogHoverCell = cell;
             if (cell >= 0 && ctx->triggerEdge[h]) {
@@ -1419,6 +1420,7 @@ static void updateCogPanel(XrCtx* ctx, InputFrame* f) {
             ctx->panelSeparation = 0.005f;
             ctx->separationCurrent = 0.005f;
             ctx->convergence = 0.5f;
+            ctx->edgeCorrection = 0;
             ctx->stereoRedrawPending = 1;
             f->out[IN_SETTING] = (float)SETTING_RESET_3D;
             f->out[IN_SETTING_VALUE] = 0.0f;

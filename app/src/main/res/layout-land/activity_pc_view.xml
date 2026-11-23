@@ -37,6 +37,15 @@
             android:layout_marginStart="12dp"
             android:text="@string/browse_smb_media"
             android:textSize="20sp" />
+
+        <Button
+            android:id="@+id/browseWeb"
+            android:layout_width="0dp"
+            android:layout_height="100dp"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:text="@string/browse_web_video"
+            android:textSize="20sp" />
     </LinearLayout>
 
     <ImageButton

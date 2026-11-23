@@ -276,6 +276,7 @@ int initGl(XrCtx* ctx) {
     ctx->disparityUniform = glGetUniformLocation(ctx->program, "u_disparity");
     ctx->tintUniform = glGetUniformLocation(ctx->program, "u_tint");
     ctx->barTestUniform = glGetUniformLocation(ctx->program, "u_barTest");
+    ctx->edgeCorrectionUniform = glGetUniformLocation(ctx->program, "u_edgeCorrection");
     ctx->occlusionUniform = glGetUniformLocation(ctx->program, "u_occlusion");
     ctx->eyeIndexUniform = glGetUniformLocation(ctx->program, "u_eyeIndex");
     ctx->convergenceUniform = glGetUniformLocation(ctx->program, "u_convergence");
@@ -422,12 +423,14 @@ static int bindVideoTarget(XrCtx* ctx) {
     return 1;
 }
 
-void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation) {
+void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation, int refreshWarpInputs) {
     // Picks up whatever the stage thread most recently finished, once per
     // frame and before anything below samples a depth slot. The acquire is
     // what makes the fence stored alongside the index visible here; the wait
     // on it belongs to the site that samples the texture.
-    ctx->depthReadIndex = atomic_load_explicit(&ctx->depthStagedIndex, memory_order_acquire);
+    if (refreshWarpInputs) {
+        ctx->depthReadIndex = atomic_load_explicit(&ctx->depthStagedIndex, memory_order_acquire);
+    }
 
     int upsampling = ctx->stereoMode == DEPTH_MODE_MODEL && ctx->upsampleEnabled;
     int occluding = upsampling && ctx->occlusionEnabled && separation > 0.0f;
@@ -449,11 +452,12 @@ void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation) {
         pfnBeginQuery(GL_TIME_ELAPSED_EXT, ctx->timerQueries[ctx->timerSlot]);
     }
 
-    if (upsampling) {
+    // A paused edge-mode comparison samples the exact maps from the displayed frame.
+    if (refreshWarpInputs && upsampling) {
         runDepthMotion(ctx, texMatrix);
         runUpsample(ctx, texMatrix);
     }
-    if (occluding) {
+    if (refreshWarpInputs && occluding) {
         runOffsetSearch(ctx, separation);
     }
 
@@ -505,6 +509,7 @@ void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation) {
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, ctx->offsetTexture);
     glUniformMatrix4fv(ctx->texMatrixUniform, 1, GL_FALSE, texMatrix);
+    glUniform1i(ctx->edgeCorrectionUniform, ctx->edgeCorrection);
     glUniform1f(ctx->occlusionUniform, occluding ? 1.0f : 0.0f);
     glUniform1f(ctx->convergenceUniform, ctx->convergence);
     glUniform1f(ctx->dispTexelsUniform, separation * ctx->upsampleWidth);
@@ -755,6 +760,8 @@ void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation) {
     }
 
     ctx->everRendered = 1;
+    ctx->drawnEdgeCorrection = ctx->edgeCorrection;
+    ctx->stereoRedrawPending = 0;
 }
 
 // Average GPU time of the warp since this was last called, which is what the

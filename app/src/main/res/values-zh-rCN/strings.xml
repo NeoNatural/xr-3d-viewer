@@ -285,4 +285,13 @@
     <string name="summary_seekbar_vibrate_fallback_strength">增强或减弱设备的震动强度</string>
     <string name="analogscroll_none">默认 (两个摇杆都控制鼠标)</string>
     <string name="vr_depth_source_zipdepth">ZipDepth 视频 3D（推荐）</string>
+    <string name="browse_web_video">在线视频</string>
+    <string name="web_bilibili">哔哩哔哩</string>
+    <string name="web_watch_3d">转 3D</string>
+    <string name="web_xr_failed">无法在 3D 播放器中显示该视频。</string>
+    <string name="web_crash">网页已停止运行，请重新打开视频。</string>
+    <string name="web_full_resolution">每眼 4K</string>
+    <string name="xr_edge_correction">边缘修正</string>
+    <string name="xr_edge_original">原算法</string>
+    <string name="xr_edge_corrected">修正版</string>
 </resources>

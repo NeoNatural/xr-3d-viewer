@@ -38,7 +38,6 @@ public class PreferenceConfiguration {
     private static final String HOST_AUDIO_PREF_STRING = "checkbox_host_audio";
     private static final String DEADZONE_PREF_STRING = "seekbar_deadzone";
     private static final String OSC_OPACITY_PREF_STRING = "seekbar_osc_opacity";
-    private static final String LANGUAGE_PREF_STRING = "list_languages";
     private static final String SMALL_ICONS_PREF_STRING = "checkbox_small_icon_mode";
     private static final String MULTI_CONTROLLER_PREF_STRING = "checkbox_multi_controller";
     static final String AUDIO_CONFIG_PREF_STRING = "list_audio_config";
@@ -145,7 +144,6 @@ public class PreferenceConfiguration {
     private static final boolean DEFAULT_HOST_AUDIO = false;
     private static final int DEFAULT_DEADZONE = 7;
     private static final int DEFAULT_OPACITY = 90;
-    public static final String DEFAULT_LANGUAGE = "default";
     private static final boolean DEFAULT_MULTI_CONTROLLER = true;
     private static final boolean DEFAULT_USB_DRIVER = true;
     private static final String DEFAULT_VIDEO_FORMAT = "auto";
@@ -244,7 +242,6 @@ public class PreferenceConfiguration {
     public int deadzonePercentage;
     public int oscOpacity;
     public boolean stretchVideo, enableSops, playHostAudio, disableWarnings;
-    public String language;
     public boolean smallIconMode, multiController, usbDriver, flipFaceButtons;
     public boolean onscreenController;
     public boolean onlyL3R3;
@@ -763,12 +760,6 @@ public class PreferenceConfiguration {
                 .apply();
     }
 
-    public static void completeLanguagePreferenceMigration(Context context) {
-        // Put our language option back to default which tells us that we've already migrated it
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        prefs.edit().putString(LANGUAGE_PREF_STRING, DEFAULT_LANGUAGE).apply();
-    }
-
     public static boolean isShieldAtvFirmwareWithBrokenHdr() {
         // This particular Shield TV firmware crashes when using HDR
         // https://www.nvidia.com/en-us/geforce/forums/notifications/comment/155192/
@@ -895,7 +886,6 @@ public class PreferenceConfiguration {
 
         config.oscOpacity = prefs.getInt(OSC_OPACITY_PREF_STRING, DEFAULT_OPACITY);
 
-        config.language = prefs.getString(LANGUAGE_PREF_STRING, DEFAULT_LANGUAGE);
 
         // Checkbox preferences
         config.disableWarnings = prefs.getBoolean(DISABLE_TOASTS_PREF_STRING, DEFAULT_DISABLE_TOASTS);

@@ -84,7 +84,7 @@ final class SmbThumbnailAdapter extends BaseAdapter {
         label.setText(item.directory ? "📁 " + item.name
                 : activity.getString(R.string.media_file_label, item.name, MediaFileSize.format(item.size)));
         icon.setImageBitmap(null);
-        icon.setContentDescription(item.directory ? "Folder" : "Image thumbnail");
+        icon.setContentDescription(activity.getString(item.directory ? R.string.media_folder : R.string.media_image_thumbnail));
         if (!item.directory && isImage(item.name)) {
             Bitmap bitmap = cache.get(item.uri);
             if (bitmap != null) icon.setImageBitmap(bitmap);
@@ -99,7 +99,7 @@ final class SmbThumbnailAdapter extends BaseAdapter {
                 icon.setImageResource(android.R.drawable.ic_media_play);
                 request(item);
             }
-            icon.setContentDescription("Video thumbnail");
+            icon.setContentDescription(activity.getString(R.string.media_video_thumbnail));
         }
         return row;
     }

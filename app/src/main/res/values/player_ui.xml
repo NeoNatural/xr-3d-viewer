@@ -1,0 +1,96 @@
+<resources>
+    <string name="back_menu">Back to menu</string>
+    <string name="back_parent">Back to parent folder</string>
+    <string name="local_loading">Loading…</string>
+    <string name="smb_forget">Forget selected NAS</string>
+    <string name="smb_host">NAS host or IP</string>
+    <string name="smb_share">Share (optional; blank lists shares)</string>
+    <string name="smb_domain">Domain (optional)</string>
+    <string name="smb_user">Username</string>
+    <string name="smb_password">Password</string>
+    <string name="smb_connect">Connect</string>
+    <string name="smb_change">Change NAS</string>
+    <string name="smb_last">Open last image</string>
+    <string name="smb_prompt">Enter a NAS; leave Share blank to browse its shared folders.</string>
+    <string name="smb_saved">Saved NAS targets</string>
+    <string name="smb_host_required">Host is required.</string>
+    <string name="smb_connecting">Connecting…</string>
+    <string name="smb_list_failed">Cannot list shares; check login or enter a Share manually</string>
+    <string name="smb_failed">SMB connection failed</string>
+    <string name="smb_folder_failed">SMB folder failed</string>
+    <string name="smb_supported">Supported media: JPEG, PNG, WebP, MP4, MKV, WebM, M4V, MOV.</string>
+    <string name="no_video">No video was selected.</string>
+    <string name="smb_ended">The SMB session has ended. Reconnect to the NAS.</string>
+    <string name="local_open_failed">Unable to open folder: %1$s</string>
+    <string name="local_read_failed">Unable to read folder: %1$s</string>
+    <string name="local_items">%1$d media items — %2$s</string>
+    <string name="smb_save_failed">Connected, but %1$s</string>
+    <string name="smb_loading">Loading %1$s</string>
+    <string name="smb_last_name">Open last image: %1$s</string>
+    <string name="smb_shares">%1$s — %2$d shares</string>
+    <string name="smb_items">%1$s — %2$d items</string>
+    <string name="video_failed">Video playback failed: %1$s</string>
+    <string name="smb_share_manual">; enter a Share manually if needed</string>
+    <string name="xr_room_notice">Screen size cannot be changed in a 3D environment. Please choose a different environment to customise the screen size.</string>
+    <string name="xr_exit_question">Back to menu?</string>
+    <string name="xr_passthrough">Passthrough</string>
+    <string name="xr_void">Black void</string>
+    <string name="xr_minimal">Minimal room</string>
+    <string name="xr_cinema">PSX Cinema</string>
+    <string name="xr_reset">Reset</string>
+    <string name="xr_discomfort">harder on the eyes</string>
+    <string name="xr_off">3D is off in settings</string>
+    <string name="xr_glow_level">Glow level</string>
+    <string name="xr_key_shift">Shift</string>
+    <string name="xr_key_del">Del</string>
+    <string name="xr_key_space">space</string>
+    <string name="xr_key_enter">Enter</string>
+    <string name="xr_key_hide">Hide</string>
+    <string name="xr_key_tab">Tab</string>
+    <string-array name="xr_picker_sections">
+        <item>Rooms</item>
+        <item>360 Images</item>
+    </string-array>
+    <string-array name="xr_tabs">
+        <item>Screen</item>
+        <item>Display</item>
+        <item>3D</item>
+    </string-array>
+    <string-array name="xr_screen_controls">
+        <item>Distance</item>
+        <item>Height</item>
+        <item>Tilt</item>
+        <item>Rotate</item>
+        <item>Curve</item>
+        <item>Size</item>
+    </string-array>
+    <string-array name="xr_display_controls">
+        <item>Sharpen</item>
+        <item>Stats</item>
+        <item>Head locked</item>
+        <item>Glow</item>
+        <item>Screen light</item>
+    </string-array>
+    <string-array name="xr_depth_controls">
+        <item>Depth</item>
+        <item>Convergence</item>
+    </string-array>
+    <string-array name="xr_sharpen_choices">
+        <item>Off</item>
+        <item>Normal</item>
+        <item>Quality</item>
+    </string-array>
+    <string-array name="xr_toggle_choices">
+        <item>Off</item>
+        <item>On</item>
+    </string-array>
+    <string name="media_folder">Folder</string>
+    <string name="media_image_thumbnail">Image thumbnail</string>
+    <string name="media_video_thumbnail">Video thumbnail</string>
+    <string name="stats_warp">Warp GPU: %1$.2f ms</string>
+    <string name="stats_depth_rate">Depth %1$.1f/s (target %2$d)</string>
+    <string name="stats_depth_model">Depth model: %1$s</string>
+    <string name="stats_inference">Depth inference: %1$.1f ms</string>
+    <string name="stats_age">Depth age: %1$.0f ms</string>
+    <string name="stats_skips">Depth frames skipped: %1$d</string>
+</resources>

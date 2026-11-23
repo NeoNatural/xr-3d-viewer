@@ -105,7 +105,9 @@ androidComponents {
 android {
     ndkVersion "29.0.14206865"
 
-    compileSdk 37
+    compileSdk {
+        version = release(37) { minorApiLevel = 2 }
+    }
 
     namespace 'com.limelight'
 
@@ -138,6 +140,7 @@ android {
     }
 
     androidResources {
+        localeFilters.addAll(["en", "zh-rCN"])
         // The depth model is mmapped straight out of the APK
         noCompress 'tflite'
     }
@@ -283,6 +286,7 @@ dependencies {
     // into XrRenderer's Surface; they are never copied through a CPU Bitmap.
     // 1.8.1 keeps the current player behavior while the app targets API 23+.
     implementation 'androidx.media3:media3-exoplayer:1.8.1'
+    implementation 'org.mozilla.geckoview:geckoview:160.0.20261116130455'
     // NOVA's multi-credit jcifs-ng fork is the first direct SMB backend.
     implementation('com.github.nova-video-player:jcifs-ng:v2.1.10-multicredit3') {
         exclude group: 'org.slf4j', module: 'slf4j-log4j12'

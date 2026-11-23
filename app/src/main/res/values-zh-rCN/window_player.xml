@@ -7,9 +7,9 @@
     <string name="window_pause">暂停</string>
     <string name="window_position">播放进度</string>
     <string name="window_sdk_required">窗口 3D 需要 Meta VR OS SDK 207 或更高版本。</string>
-    <string name="window_render_error">无法在此窗口显示立体画面。</string>
+    <string name="window_render_error">无法显示立体画面。</string>
     <string name="window_3d">3D</string>
     <string name="window_convergence">会聚位置</string>
     <string name="window_reset">恢复默认</string>
-    <string name="window_resolution">视频每眼输出长边</string>
+    <string name="window_resolution">本地与 SMB 窗口视频每眼输出长边</string>
 </resources>

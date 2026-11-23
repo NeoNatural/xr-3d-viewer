@@ -2,9 +2,9 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-**Quest Window 3D experiment** (`experiment/quest-window-3d`). Open a local or SMB photo or video in the Window 3D app to view it in the system panel. Select **3D** during playback to adjust stereo separation and convergence. Video output defaults to a 1920-pixel long edge per eye. Select 2560 or 3840 in media settings and reopen a clip to compare detail.
+**Quest 3D experiment** (`experiment/quest-window-3d`). From the home screen, open the gear and choose **General → 3D playback mode**. Immersive 3D is the default. Select Windowed 3D to open local and SMB photos or videos, and supported full-screen web videos, in a system window. The choice takes effect the next time you open media. Choose **General → Language** for English (default) or Simplified Chinese.
 
-This branch installs alongside the immersive version described below. The headset must support Meta VR OS SDK 207 or later. [Meta stereo surface composition guide](https://developers.meta.com/vr/documentation/android-apps/stereo-surface-composition/)
+The experimental app installs alongside the main app. Windowed 3D requires Meta VR OS SDK 207 or later. [Meta stereo surface composition guide](https://developers.meta.com/vr/documentation/android-apps/stereo-surface-composition/)
 
 An open-source Android/OpenXR media viewer that turns ordinary 2D photos and
 videos into stereoscopic 3D on a standalone headset. Media can be opened from

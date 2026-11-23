@@ -15,6 +15,7 @@ import android.graphics.Shader;
 import android.graphics.Typeface;
 
 import com.limelight.LimeLog;
+import com.limelight.R;
 import com.limelight.preferences.PreferenceConfiguration;
 
 import java.io.IOException;
@@ -45,7 +46,7 @@ final class XrPanels {
     private static final String IMAGE_DIR = "images";
     private static final int PICKER_CELL_W = PICKER_TEX_W / PICKER_COLS;
     // One per band, drawn in the strip above its cells
-    private static final String[] PICKER_HEADERS = { "Rooms", "360 Images" };
+    private final String[] PICKER_HEADERS;
     // The photos take whatever the rooms leave, so how many fit is a question
     // for the layout rather than a count kept here
     static final int MAX_PHOTOS = PICKER_CELLS - ENV_CELL_FIRST_PHOTO;
@@ -56,33 +57,23 @@ final class XrPanels {
     // switching is free, and a fourth sheet handed over after them: the screen
     // tab as it reads while a 3d room hangs the picture, which the native side
     // picks for itself.
-    private static final String[] COG_TABS = { "Screen", "Display", "3D" };
-    private static final String[] COG_SLIDER_ROWS =
-            { "Distance", "Height", "Tilt", "Rotate", "Curve", "Size" };
+    private final String[] COG_TABS;
+    private final String[] COG_SLIDER_ROWS;
     // What stands in for those rows in a room, where the wall decides both the
     // placement and the size
-    private static final String COG_ROOM_NOTICE =
-            "Screen size cannot be changed in a 3D environment. "
-                    + "Please choose a different environment to customise the screen size.";
     // Display tab: a label and a row of cells, one of which is in force, and
     // the glow level track under them. Head locked sits with the picture rows
     // so the two light rows and the level track they belong with stay together
     // at the bottom. Screen light is the wash the picture throws over a 3d
     // room, which only shows in one, and head lock is ignored in one, but both
     // stay live here like the rest: the picker can put a room up at any moment.
-    private static final String[] COG_OPTION_ROWS =
-            { "Sharpen", "Stats", "Head locked", "Glow", "Screen light" };
-    private static final String[][] COG_OPTION_CELLS = {
-            { "Off", "Normal", "Quality" },
-            { "Off", "On" },
-            { "Off", "On" },
-            { "Off", "On" },
-            { "Off", "On" }
-    };
+    private final String[] COG_OPTION_ROWS;
+    private final String[] sharpenChoices;
+    private final String[] toggleChoices;
     // 3D tab: two sliders, drawn the same way the screen tab's are. Only
     // values that take effect the moment they move belong on the panel, which
     // is why the depth source itself stays in the 2d settings.
-    private static final String[] COG_SLIDER3D_ROWS = { "Depth", "Convergence" };
+    private final String[] COG_SLIDER3D_ROWS;
     // Where the measured comfort cap, which is also the shipped default, falls
     // along the separation track
     private static final float COG_SEP_CAP_T =
@@ -161,7 +152,7 @@ final class XrPanels {
     // lit button, in zone order, so which one shows is a swapchain handle on
     // the native side rather than an upload. The sheet and where its buttons
     // sit on it are the EXIT_ values in XrShared.
-    private static final String EXIT_QUESTION = "Back to menu?";
+
 
     private final Context context;
     // The photos in the assets folder, in the order the picker shows them
@@ -169,6 +160,13 @@ final class XrPanels {
 
     XrPanels(Context context, String[] environmentFiles) {
         this.context = context;
+        sharpenChoices = context.getResources().getStringArray(R.array.xr_sharpen_choices);
+        toggleChoices = context.getResources().getStringArray(R.array.xr_toggle_choices);
+        COG_SLIDER3D_ROWS = context.getResources().getStringArray(R.array.xr_depth_controls);
+        COG_OPTION_ROWS = context.getResources().getStringArray(R.array.xr_display_controls);
+        COG_SLIDER_ROWS = context.getResources().getStringArray(R.array.xr_screen_controls);
+        COG_TABS = context.getResources().getStringArray(R.array.xr_tabs);
+        PICKER_HEADERS = context.getResources().getStringArray(R.array.xr_picker_sections);
         this.environmentFiles = environmentFiles;
     }
 
@@ -252,21 +250,21 @@ final class XrPanels {
             String name;
             Bitmap thumb = null;
             if (cell == ENV_CELL_PASSTHROUGH) {
-                name = "Passthrough";
+                name = context.getString(R.string.xr_passthrough);
                 paint.setColor(0xFF2A3540);
             }
             else if (cell == ENV_CELL_VOID) {
-                name = "Black void";
+                name = context.getString(R.string.xr_void);
                 paint.setColor(0xFF090909);
             }
             else if (cell == ENV_CELL_MINIMAL_ROOM) {
                 // No photo to preview, so the room is sketched on the tile
                 // below once the base colour is down
-                name = "Minimal room";
+                name = context.getString(R.string.xr_minimal);
                 paint.setColor(0xFF0B0B0E);
             }
             else if (cell == ENV_CELL_PSX_CINEMA) {
-                name = "PSX Cinema";
+                name = context.getString(R.string.xr_cinema);
                 paint.setColor(0xFF120A0C);
             }
             else if (cell - ENV_CELL_FIRST_PHOTO < environmentFiles.length) {
@@ -504,16 +502,16 @@ final class XrPanels {
      * and cells live in the texture: thumbs and selection rings are quads of
      * their own, so using the panel costs no upload.
      */
-    ByteBuffer[] buildCogTabs(boolean curveOk, boolean stereoOk) {
-        Bitmap screenTab = buildCogTab(COG_TAB_SCREEN, curveOk, stereoOk);
+    ByteBuffer[] buildCogTabs(boolean curveOk, int depthMode) {
+        Bitmap screenTab = buildCogTab(COG_TAB_SCREEN, curveOk, depthMode);
         ByteBuffer screen = toBuffer(screenTab);
         screenTab.recycle();
 
-        Bitmap displayTab = buildCogTab(COG_TAB_DISPLAY, curveOk, stereoOk);
+        Bitmap displayTab = buildCogTab(COG_TAB_DISPLAY, curveOk, depthMode);
         ByteBuffer display = toBuffer(displayTab);
         displayTab.recycle();
 
-        Bitmap tab3d = buildCogTab(COG_TAB_3D, curveOk, stereoOk);
+        Bitmap tab3d = buildCogTab(COG_TAB_3D, curveOk, depthMode);
         ByteBuffer sheet3d = toBuffer(tab3d);
         tab3d.recycle();
 
@@ -548,7 +546,7 @@ final class XrPanels {
         return bitmap;
     }
 
-    private Bitmap buildCogTab(int tab, boolean curveOk, boolean stereoOk) {
+    private Bitmap buildCogTab(int tab, boolean curveOk, int depthMode) {
         Bitmap bitmap = Bitmap.createBitmap(COG_TEX_W, COG_TEX_H, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         drawCogChrome(canvas, tab);
@@ -556,7 +554,7 @@ final class XrPanels {
             drawCogSliderRows(canvas, curveOk);
         }
         else if (tab == COG_TAB_3D) {
-            drawCog3dRows(canvas, stereoOk);
+            drawCog3dRows(canvas, depthMode);
         }
         else {
             drawCogOptionRows(canvas);
@@ -652,7 +650,7 @@ final class XrPanels {
 
         text.setColor(Color.WHITE);
         text.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText("Reset", reset.centerX(),
+        canvas.drawText(context.getString(R.string.xr_reset), reset.centerX(),
                 reset.centerY() - (text.ascent() + text.descent()) * 0.5f, text);
     }
 
@@ -664,7 +662,7 @@ final class XrPanels {
         text.setTextAlign(Paint.Align.CENTER);
         text.setColor(0xC0FFFFFF);
 
-        String[] lines = wrapText(COG_ROOM_NOTICE, text, 0.80f * COG_TEX_W);
+        String[] lines = wrapText(context.getString(R.string.xr_room_notice), text, 0.80f * COG_TEX_W);
         float step = (text.descent() - text.ascent()) * 1.4f;
         float middle = (COG_TAB_BAR_B * COG_TEX_H + COG_TEX_H) * 0.5f;
         float y = middle - (lines.length - 1) * step * 0.5f
@@ -698,7 +696,8 @@ final class XrPanels {
     // 3D tab: the two values worth reaching mid stream. Depth runs past the
     // comfortable range on purpose, with the far end marked, since where that
     // range ends is a matter of eyes rather than of hardware.
-    private void drawCog3dRows(Canvas canvas, boolean stereoOk) {
+    private void drawCog3dRows(Canvas canvas, int depthMode) {
+        boolean stereoOk = depthMode != DEPTH_MODE_OFF;
         Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
         text.setTextSize(22.0f);
         text.setTextAlign(Paint.Align.LEFT);
@@ -741,7 +740,7 @@ final class XrPanels {
                 caption.setColor(stereoOk ? 0xA0FFB74D : 0x30FFB74D);
                 // Just above the next row's hit band, which starts 0.055 down
                 // now the rows sit closer together
-                canvas.drawText("harder on the eyes", (markX + trackR) * 0.5f,
+                canvas.drawText(context.getString(R.string.xr_discomfort), (markX + trackR) * 0.5f,
                         y + 0.04f * COG_TEX_H, caption);
             }
             else {
@@ -750,6 +749,16 @@ final class XrPanels {
             }
 
             canvas.drawRect(markX - 2.0f, y - tickHalf, markX + 2.0f, y + tickHalf, tick);
+        }
+
+        if (depthMode == DEPTH_MODE_MODEL) {
+            float y = (COG_ROW_V0 + COG_ROW3D_EDGE * COG_ROW_STEP) * COG_TEX_H;
+            canvas.drawText(context.getString(R.string.xr_edge_correction), 0.06f * COG_TEX_W,
+                    y - (text.ascent() + text.descent()) * 0.5f, text);
+            drawCogCells(canvas, COG_ROW3D_EDGE, new String[] {
+                    context.getString(R.string.xr_edge_original),
+                    context.getString(R.string.xr_edge_corrected)
+            });
         }
 
         // A way back from a pair of values that turned out to be unwatchable
@@ -763,7 +772,7 @@ final class XrPanels {
 
         text.setColor(Color.WHITE);
         text.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText("Reset", reset.centerX(),
+        canvas.drawText(context.getString(R.string.xr_reset), reset.centerX(),
                 reset.centerY() - (text.ascent() + text.descent()) * 0.5f, text);
 
         if (!stereoOk) {
@@ -772,8 +781,42 @@ final class XrPanels {
             hint.setTextSize(17.0f);
             hint.setTextAlign(Paint.Align.CENTER);
             hint.setColor(0x50FFFFFF);
-            canvas.drawText("3D is off in settings", COG_TEX_W * 0.5f,
+            canvas.drawText(context.getString(R.string.xr_off), COG_TEX_W * 0.5f,
                     0.62f * COG_TEX_H, hint);
+        }
+    }
+
+    private void drawCogCells(Canvas canvas, int row, String[] names) {
+        Paint cellText = new Paint(Paint.ANTI_ALIAS_FLAG);
+        cellText.setTextSize(19.0f);
+        cellText.setTextAlign(Paint.Align.CENTER);
+        cellText.setColor(Color.WHITE);
+
+        Paint cell = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        final float trackL = COG_TRACK_L * COG_TEX_W;
+        final float trackR = COG_TRACK_R * COG_TEX_W;
+        final float cellHalf = COG_CELL_HALF * COG_TEX_H;
+
+        float y = (COG_ROW_V0 + row * COG_ROW_STEP) * COG_TEX_H;
+        float span = (trackR - trackL) / names.length;
+        for (int i = 0; i < names.length; i++) {
+            // Inset so neighbours read as separate buttons rather than one
+            // long strip
+            RectF box = new RectF(trackL + i * span + 3.0f, y - cellHalf,
+                    trackL + (i + 1) * span - 3.0f, y + cellHalf);
+
+            cell.setStyle(Paint.Style.FILL);
+            cell.setColor(0x28FFFFFF);
+            canvas.drawRoundRect(box, 10.0f, 10.0f, cell);
+            cell.setStyle(Paint.Style.STROKE);
+            cell.setStrokeWidth(2.0f);
+            cell.setColor(0x50FFFFFF);
+            canvas.drawRoundRect(box, 10.0f, 10.0f, cell);
+
+            canvas.drawText(names[i], box.centerX(),
+                    box.centerY() - (cellText.ascent() + cellText.descent()) * 0.5f,
+                    cellText);
         }
     }
 
@@ -786,48 +829,20 @@ final class XrPanels {
         label.setTextAlign(Paint.Align.LEFT);
         label.setColor(Color.WHITE);
 
-        Paint cellText = new Paint(Paint.ANTI_ALIAS_FLAG);
-        cellText.setTextSize(19.0f);
-        cellText.setTextAlign(Paint.Align.CENTER);
-        cellText.setColor(Color.WHITE);
-
-        Paint cell = new Paint(Paint.ANTI_ALIAS_FLAG);
-
         final float trackL = COG_TRACK_L * COG_TEX_W;
         final float trackR = COG_TRACK_R * COG_TEX_W;
         final float cellHalf = COG_CELL_HALF * COG_TEX_H;
-
         for (int row = 0; row < COG_OPTION_ROWS.length; row++) {
             float y = (COG_ROW_V0 + row * COG_ROW_STEP) * COG_TEX_H;
             canvas.drawText(COG_OPTION_ROWS[row], 0.06f * COG_TEX_W,
                     y - (label.ascent() + label.descent()) * 0.5f, label);
-
-            String[] names = COG_OPTION_CELLS[row];
-            float span = (trackR - trackL) / names.length;
-            for (int i = 0; i < names.length; i++) {
-                // Inset so neighbours read as separate buttons rather than one
-                // long strip
-                RectF box = new RectF(trackL + i * span + 3.0f, y - cellHalf,
-                        trackL + (i + 1) * span - 3.0f, y + cellHalf);
-
-                cell.setStyle(Paint.Style.FILL);
-                cell.setColor(0x28FFFFFF);
-                canvas.drawRoundRect(box, 10.0f, 10.0f, cell);
-                cell.setStyle(Paint.Style.STROKE);
-                cell.setStrokeWidth(2.0f);
-                cell.setColor(0x50FFFFFF);
-                canvas.drawRoundRect(box, 10.0f, 10.0f, cell);
-
-                canvas.drawText(names[i], box.centerX(),
-                        box.centerY() - (cellText.ascent() + cellText.descent()) * 0.5f,
-                        cellText);
-            }
+            drawCogCells(canvas, row, row == 0 ? sharpenChoices : toggleChoices);
         }
 
         // How strong the glow is, a track under the cells and the only row on
         // this tab that is dragged rather than pressed
         float y = (COG_ROW_V0 + COG_DISPLAY_SLIDER_ROW * COG_ROW_STEP) * COG_TEX_H;
-        canvas.drawText("Glow level", 0.06f * COG_TEX_W,
+        canvas.drawText(context.getString(R.string.xr_glow_level), 0.06f * COG_TEX_W,
                 y - (label.ascent() + label.descent()) * 0.5f, label);
 
         Paint track = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -955,6 +970,18 @@ final class XrPanels {
 
     // One state's worth of keys, drawn as caps on the same dark rounded panel
     // the settings use
+    private String keyCaption(String key) {
+        switch (key) {
+            case "Shift": return context.getString(R.string.xr_key_shift);
+            case "Del": return context.getString(R.string.xr_key_del);
+            case "space": return context.getString(R.string.xr_key_space);
+            case "Enter": return context.getString(R.string.xr_key_enter);
+            case "Hide": return context.getString(R.string.xr_key_hide);
+            case "Tab": return context.getString(R.string.xr_key_tab);
+            default: return key;
+        }
+    }
+
     private Bitmap buildKeyboardSheet(String[][] labels, float[] rects) {
         Bitmap bitmap = Bitmap.createBitmap(KB_TEX_W, KB_TEX_H, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
@@ -987,7 +1014,7 @@ final class XrPanels {
                 // A single character is what the key types, so it gets the
                 // room. The named keys are wordier and have to fit.
                 text.setTextSize(label.length() == 1 ? 34.0f : 22.0f);
-                canvas.drawText(label, box.centerX(),
+                canvas.drawText(keyCaption(label), box.centerX(),
                         box.centerY() - (text.ascent() + text.descent()) * 0.5f, text);
             }
         }
@@ -1092,13 +1119,13 @@ final class XrPanels {
         text.setColor(Color.WHITE);
         text.setTextSize(34.0f);
         float questionY = EXIT_TEX_H * 0.30f;
-        canvas.drawText(EXIT_QUESTION, EXIT_TEX_W * 0.5f,
+        canvas.drawText(context.getString(R.string.xr_exit_question), EXIT_TEX_W * 0.5f,
                 questionY - (text.ascent() + text.descent()) * 0.5f, text);
 
         // Both choices retain their existing shape and hit target.
-        drawExitChoice(canvas, paint, text, EXIT_EXIT_L, EXIT_EXIT_R, "Back to menu",
+        drawExitChoice(canvas, paint, text, EXIT_EXIT_L, EXIT_EXIT_R, context.getString(R.string.back_menu),
                 0xFFE05A5A, hot == EXIT_ZONE_EXIT);
-        drawExitChoice(canvas, paint, text, EXIT_CANCEL_L, EXIT_CANCEL_R, "Cancel",
+        drawExitChoice(canvas, paint, text, EXIT_CANCEL_L, EXIT_CANCEL_R, context.getString(android.R.string.cancel),
                 0xEEFFFFFF, hot == EXIT_ZONE_CANCEL);
 
         return bitmap;
@@ -1132,7 +1159,7 @@ final class XrPanels {
         if (labelWidth > availableWidth) {
             text.setTextSize(30.0f * availableWidth / labelWidth);
         }
-        canvas.drawText(label, box.centerX(),
+        canvas.drawText(keyCaption(label), box.centerX(),
                 box.centerY() - (text.ascent() + text.descent()) * 0.5f, text);
     }
 

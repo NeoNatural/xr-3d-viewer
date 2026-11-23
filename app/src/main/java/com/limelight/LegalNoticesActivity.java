@@ -1,6 +1,5 @@
 package com.limelight;
 
-import android.app.Activity;
 import android.os.Bundle;
 import android.text.method.LinkMovementMethod;
 import android.widget.ScrollView;
@@ -14,11 +13,10 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 /** Offline copy of the notices that accompany every source and binary release. */
-public final class LegalNoticesActivity extends Activity {
+public final class LegalNoticesActivity extends LocalizedActivity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        UiHelper.setLocale(this);
 
         TextView notice = new TextView(this);
         int padding = Math.round(20 * getResources().getDisplayMetrics().density);

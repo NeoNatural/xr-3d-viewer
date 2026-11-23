@@ -277,4 +277,13 @@
 \n注意：啟用此選項可能會導致您的手把在主機被辨識為 PlayStation 控制器。</string>
     <string name="title_checkbox_gamepad_motion_fallback">模擬手把動態感測器支援</string>
     <string name="vr_depth_source_zipdepth">ZipDepth 視訊 3D（推薦）</string>
+    <string name="browse_web_video">線上影片</string>
+    <string name="web_bilibili">嗶哩嗶哩</string>
+    <string name="web_watch_3d">轉 3D</string>
+    <string name="web_xr_failed">無法在 3D 播放器中顯示這部影片。</string>
+    <string name="web_crash">網頁已停止執行，請重新開啟影片。</string>
+    <string name="web_full_resolution">每眼 4K</string>
+    <string name="xr_edge_correction">邊緣修正</string>
+    <string name="xr_edge_original">原演算法</string>
+    <string name="xr_edge_corrected">修正版</string>
 </resources>

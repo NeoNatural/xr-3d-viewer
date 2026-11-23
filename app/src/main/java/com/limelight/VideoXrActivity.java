@@ -37,9 +37,9 @@ import com.limelight.smb.SmbStorage;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Plays local and SMB video playlists on the stereo panel. */
+/** Plays local and SMB video playlists in the selected presentation mode. */
 @OptIn(markerClass = UnstableApi.class)
-public final class VideoXrActivity extends WindowMediaActivity {
+public class VideoXrActivity extends MediaPlaybackActivity {
     public static final String EXTRA_VIDEO_URIS = "videoUris";
     public static final String EXTRA_SMB_VIDEO_URIS = "smbVideoUris";
     public static final String EXTRA_START_INDEX = "startIndex";
@@ -89,10 +89,10 @@ public final class VideoXrActivity extends WindowMediaActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (!openPanel(DEFAULT_WIDTH, DEFAULT_HEIGHT, ".video")) return;
+        if (!openPlayback(DEFAULT_WIDTH, DEFAULT_HEIGHT, ".video", false)) return;
         eyeLongEdgeLimit = parsePositive(PreferenceManager.getDefaultSharedPreferences(this)
                 .getString(getString(R.string.window_resolution_key), "1920"), DEFAULT_WIDTH);
-        createControls();
+        if (windowed()) createControls();
 
         ArrayList<String> smbPlaylist = getIntent().getStringArrayListExtra(EXTRA_SMB_VIDEO_URIS);
         if (smbPlaylist != null && !smbPlaylist.isEmpty()) {
@@ -106,7 +106,7 @@ public final class VideoXrActivity extends WindowMediaActivity {
         ArrayList<Uri> playlist = getIntent().getParcelableArrayListExtra(EXTRA_VIDEO_URIS);
         Uri uri = playlist == null || playlist.isEmpty() ? getIntent().getData() : playlist.get(0);
         if (uri == null) {
-            Toast.makeText(this, "No video was selected.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.no_video), Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
@@ -124,7 +124,7 @@ public final class VideoXrActivity extends WindowMediaActivity {
         SmbStorage storage = SmbClientManager.active();
         if (storage == null) {
             runOnUiThread(() -> {
-                Toast.makeText(this, "The SMB session has ended. Reconnect to the NAS.",
+                Toast.makeText(this, getString(R.string.smb_ended),
                         Toast.LENGTH_LONG).show();
                 finish();
             });
@@ -154,10 +154,10 @@ public final class VideoXrActivity extends WindowMediaActivity {
         // Video playback should not colour the screen edge or the room around it.
         prefs.vrAmbilight = false;
         prefs.vrRoomLight = false;
-        XrRenderer xr = panelRenderer;
+        XrRenderer xr = renderer;
         xr.setVideoControlsEnabled(true);
         if (!xr.start(this, width, height, prefs)) {
-            runOnUiThread(() -> failPanel(R.string.window_render_error));
+            runOnUiThread(() -> showPlaybackError(R.string.window_render_error));
             return;
         }
         runOnUiThread(() -> {
@@ -266,7 +266,11 @@ public final class VideoXrActivity extends WindowMediaActivity {
             public void onVideoSizeChanged(VideoSize videoSize) {
                 LimeLog.info(sourceName + " video decoder output " + videoSize.width + "x"
                         + videoSize.height + ", pixel ratio " + videoSize.pixelWidthHeightRatio);
-                if (videoSize.width > 0 && videoSize.height > 0) {
+                if (videoSize.width > 0 && videoSize.height > 0 && videoSize.pixelWidthHeightRatio > 0) {
+                    if (!windowed()) {
+                        renderer.setVideoDisplayAspect(videoSize.height / (videoSize.width * videoSize.pixelWidthHeightRatio));
+                        return;
+                    }
                     VideoGeometry eye = new VideoGeometry(videoSize.width, videoSize.height)
                             .fitWithin(eyeLongEdgeLimit);
                     LimeLog.info("Window video per-eye output " + eye.width + "x" + eye.height);
@@ -280,7 +284,7 @@ public final class VideoXrActivity extends WindowMediaActivity {
                 LimeLog.severe(sourceName + " video playback failed: " + error.getErrorCodeName()
                         + ": " + error.getMessage());
                 Toast.makeText(VideoXrActivity.this,
-                        "Video playback failed: " + error.getErrorCodeName(), Toast.LENGTH_LONG)
+                        getString(R.string.video_failed, error.getErrorCodeName()), Toast.LENGTH_LONG)
                         .show();
             }
 
@@ -372,6 +376,11 @@ public final class VideoXrActivity extends WindowMediaActivity {
         long duration = current == null ? C.TIME_UNSET : current.getDuration();
         long position = current == null ? 0 : current.getCurrentPosition();
         boolean seekable = current != null && current.isCurrentMediaItemSeekable() && duration > 0;
+        if (!windowed()) {
+            renderer.setVideoPlaybackState(current != null && current.getPlayWhenReady(),
+                    seekable ? position / (float) duration : 0f, position, duration);
+            return;
+        }
         seek.setEnabled(seekable);
         if (!dragging) seek.setProgress(seekable ? (int)(1000.0 * position / duration) : 0);
         clock.setText(MediaPlaybackTime.label(position, duration));
@@ -404,7 +413,6 @@ public final class VideoXrActivity extends WindowMediaActivity {
         controlsHandler.removeCallbacks(controlsTicker);
         if (sourceThread != null) sourceThread.interrupt();
 
-
         ExoPlayer current = player;
         if (current != null) {
             Surface surface = videoSurface;
@@ -413,11 +421,35 @@ public final class VideoXrActivity extends WindowMediaActivity {
             player = null;
         }
         if (rendererReady) {
-            panelRenderer.prepareForStop();
-            panelRenderer.cleanup();
+            renderer.prepareForStop();
+            renderer.cleanup();
         }
         videoSurface = null;
         super.onDestroy();
     }
 
+    @Override public void onVrVideoControl(int action, float value) {
+        runOnUiThread(() -> {
+            if (action == com.limelight.binding.video.XrShared.VIDEO_CONTROL_BACK) {
+                seekBy(-SEEK_STEP_MS);
+            } else if (action == com.limelight.binding.video.XrShared.VIDEO_CONTROL_TOGGLE) {
+                togglePlayback();
+            } else if (action == com.limelight.binding.video.XrShared.VIDEO_CONTROL_FORWARD) {
+                seekBy(SEEK_STEP_MS);
+            } else if (action == com.limelight.binding.video.XrShared.VIDEO_CONTROL_SEEK) {
+                seekToFraction(value);
+            } else if (action == com.limelight.binding.video.XrShared.VIDEO_CONTROL_PREVIOUS) {
+                ExoPlayer current = player;
+                if (current != null && current.hasPreviousMediaItem()) {
+                    current.seekToPreviousMediaItem();
+                }
+            } else if (action == com.limelight.binding.video.XrShared.VIDEO_CONTROL_NEXT) {
+                ExoPlayer current = player;
+                if (current != null && current.hasNextMediaItem()) {
+                    current.seekToNextMediaItem();
+                }
+            }
+            updateControlBar();
+        });
+    }
 }

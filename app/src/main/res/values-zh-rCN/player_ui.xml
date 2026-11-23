@@ -1,0 +1,174 @@
+<resources>
+    <string name="browse_local_media">浏览本地照片和视频</string>
+    <string name="browse_smb_media">浏览 SMB 照片和视频</string>
+    <string name="media_library_title">XR 媒体库</string>
+    <string name="media_settings">媒体播放设置</string>
+    <string name="category_about">关于</string>
+    <string name="title_legal_notices">开源许可</string>
+    <string name="summary_legal_notices">许可、保修、源代码和第三方声明</string>
+    <string name="legal_notices_unavailable">无法读取随附的许可声明：%1$s</string>
+    <string name="choose_local_folder">选择本地媒体文件夹</string>
+    <string name="local_folder_empty">此文件夹中没有支持的照片或视频。</string>
+    <string name="category_vr_settings">播放设置</string>
+    <string name="category_vr_debug">调试设置</string>
+    <string name="title_settings_back">返回</string>
+    <string name="title_vr_pointer">手柄指针</string>
+    <string name="summary_vr_pointer">用手柄指向屏幕，扳机键单击，A 或 X 键右击，摇杆滚动。按下摇杆可关闭指针。</string>
+    <string name="title_vr_gaze">视线指向</string>
+    <string name="summary_vr_gaze">在支持眼动追踪的头显上，注视屏幕并捏合即可点击。手柄或手指指向屏幕时会接管指针。</string>
+    <string name="title_vr_hand_tracking">手部追踪</string>
+    <string name="summary_vr_hand_tracking">放下手柄后可用手指向并捏合。关闭后只用手柄。播放时可用银幕左侧的锁暂时禁用手势。</string>
+    <string name="title_vr_passthrough">透视环境</string>
+    <string name="summary_vr_passthrough">显示周围的真实环境。透视会增加系统负载，播放卡顿时可以关闭。</string>
+    <string name="title_vr_depth_source">实时 3D 模式</string>
+    <string name="summary_vr_depth_source">选择深度模型、关闭转换或显示测试图案。</string>
+    <string name="title_vr_env_res">环境分辨率</string>
+    <string name="summary_vr_env_res">设置银幕周围 3D 房间的清晰度。更高画质需要更多 GPU 时间，极高档为实验选项，可能出现卡顿。</string>
+    <string name="title_seekbar_vr_inference_cadence">每秒深度更新次数</string>
+    <string name="summary_seekbar_vr_inference_cadence">较低的更新率可降低负载，但深度变化会滞后于运动。视频播放跟不上时会暂时降低更新率。</string>
+    <string name="suffix_seekbar_vr_inference_cadence">次/秒</string>
+    <string name="title_vr_depth_debug">显示深度图</string>
+    <string name="summary_vr_depth_debug">用灰度深度图替代视频画面，检查深度质量。</string>
+    <string name="title_vr_eye_swap">交换左右眼</string>
+    <string name="summary_vr_eye_swap">在立体播放时交换左右眼画面。</string>
+    <string name="title_seekbar_vr_separation">立体视差</string>
+    <string name="title_vr_file_log">保存日志文件</string>
+    <string name="summary_vr_file_log">将文本日志保存在 Download/MoonlightXR，可用头显文件管理器找到并随问题报告发送。单个文件最大 5 MB，会保留上一个文件。重启应用后生效。</string>
+    <string name="title_bug_report">反馈问题</string>
+    <string name="summary_bug_report">将问题描述、设备、设置和日志整理成报告并发送。</string>
+    <string name="bug_report_email_hint">用于接收回复的邮箱</string>
+    <string name="bug_report_failed">无法写入报告：%1$s</string>
+    <string name="bug_report_from">回复地址：%1$s</string>
+    <string name="bug_report_intro">请描述实际发生的问题以及预期的结果。报告将包含你的描述、应用版本、头显、播放设置和日志，并发送至 %1$s。\n\n日志：%2$s</string>
+    <string name="bug_report_log_off">已关闭。请先打开“保存日志文件”并重现问题，否则报告将不含日志。</string>
+    <string name="bug_report_message_hint">发生了什么问题？</string>
+    <string name="bug_report_no_mail">此设备没有邮件应用，报告已保存到\n\n%1$s\n\n请从头显中复制文件，作为附件发送到 %2$s。</string>
+    <string name="bug_report_save">保存报告</string>
+    <string name="bug_report_saved">报告已保存到\n\n%1$s</string>
+    <string name="bug_report_send">通过邮件发送</string>
+    <string name="bug_report_send_direct">发送</string>
+    <string name="bug_report_sending">正在发送报告…</string>
+    <string name="bug_report_sent">报告已发送，谢谢</string>
+    <string name="bug_report_subject">Moonlight XR 报告：%1$s，%2$s</string>
+    <string name="bug_report_upload_failed">报告发送失败（%1$s），已保存到\n\n%2$s\n\n请联网后重试，或复制文件并发送邮件到 %3$s。</string>
+    <string name="gen1_warning_title">检测到较早型号的头显</string>
+    <string name="gen1_warning_text">本应用面向 Quest 3、Pico 4 Ultra 及更新的头显。Quest 2、Pico 4 或更早设备尚未测试，性能可能较低。已采用低负载配置。关闭实时 3D 可进一步提高流畅度。</string>
+    <string name="web_enter_url">输入网址</string>
+    <string name="web_open_url">打开</string>
+    <string name="web_invalid_url">请输入网站地址，例如 example.com。</string>
+    <string name="back_menu">返回主菜单</string>
+    <string name="back_parent">返回上级文件夹</string>
+    <string name="local_loading">正在加载…</string>
+    <string name="smb_forget">忘记所选 NAS</string>
+    <string name="smb_host">NAS 主机名或 IP 地址</string>
+    <string name="smb_share">共享名称（留空可列出共享）</string>
+    <string name="smb_domain">域（可选）</string>
+    <string name="smb_user">用户名</string>
+    <string name="smb_password">密码</string>
+    <string name="smb_connect">连接</string>
+    <string name="smb_change">更换 NAS</string>
+    <string name="smb_last">打开上次查看的图片</string>
+    <string name="smb_prompt">输入 NAS 地址。共享名称留空时可浏览共享文件夹。</string>
+    <string name="smb_saved">已保存的 NAS</string>
+    <string name="smb_host_required">请输入主机名或 IP 地址。</string>
+    <string name="smb_connecting">正在连接…</string>
+    <string name="smb_list_failed">无法列出共享，请检查登录信息或手动输入共享名称</string>
+    <string name="smb_failed">SMB 连接失败</string>
+    <string name="smb_folder_failed">无法读取 SMB 文件夹</string>
+    <string name="smb_supported">支持的格式：JPEG、PNG、WebP、MP4、MKV、WebM、M4V、MOV。</string>
+    <string name="no_video">未选择视频。</string>
+    <string name="smb_ended">SMB 会话已结束，请重新连接 NAS。</string>
+    <string name="local_open_failed">无法打开文件夹：%1$s</string>
+    <string name="local_read_failed">无法读取文件夹：%1$s</string>
+    <string name="local_items">%1$d 项媒体 — %2$s</string>
+    <string name="smb_save_failed">已连接，但保存失败：%1$s</string>
+    <string name="smb_loading">正在加载 %1$s</string>
+    <string name="smb_last_name">打开上次查看的图片：%1$s</string>
+    <string name="smb_shares">%1$s — %2$d 个共享</string>
+    <string name="smb_items">%1$s — %2$d 项</string>
+    <string name="video_failed">视频播放失败：%1$s</string>
+    <string name="smb_share_manual">；可手动输入共享名称</string>
+    <string name="xr_room_notice">当前房间的银幕大小固定。 更换环境后可调整大小。</string>
+    <string name="xr_exit_question">返回主菜单？</string>
+    <string name="xr_passthrough">透视</string>
+    <string name="xr_void">黑色背景</string>
+    <string name="xr_minimal">简约房间</string>
+    <string name="xr_cinema">PSX 影院</string>
+    <string name="xr_reset">重置</string>
+    <string name="xr_discomfort">可能更易疲劳</string>
+    <string name="xr_off">设置中已关闭 3D</string>
+    <string name="xr_glow_level">辉光强度</string>
+    <string name="xr_key_shift">上档</string>
+    <string name="xr_key_del">删除</string>
+    <string name="xr_key_space">空格</string>
+    <string name="xr_key_enter">回车</string>
+    <string name="xr_key_hide">隐藏</string>
+    <string name="xr_key_tab">制表</string>
+    <string-array name="xr_picker_sections">
+        <item>房间</item>
+        <item>全景图片</item>
+    </string-array>
+    <string-array name="xr_tabs">
+        <item>银幕</item>
+        <item>显示</item>
+        <item>3D</item>
+    </string-array>
+    <string-array name="xr_screen_controls">
+        <item>距离</item>
+        <item>高度</item>
+        <item>倾斜</item>
+        <item>旋转</item>
+        <item>曲率</item>
+        <item>大小</item>
+    </string-array>
+    <string-array name="xr_display_controls">
+        <item>锐化</item>
+        <item>统计</item>
+        <item>跟随头部</item>
+        <item>辉光</item>
+        <item>银幕照明</item>
+    </string-array>
+    <string-array name="xr_depth_controls">
+        <item>视差</item>
+        <item>会聚位置</item>
+    </string-array>
+    <string-array name="xr_sharpen_choices">
+        <item>关闭</item>
+        <item>标准</item>
+        <item>高画质</item>
+    </string-array>
+    <string-array name="xr_toggle_choices">
+        <item>关闭</item>
+        <item>开启</item>
+    </string-array>
+    <string-array name="vr_depth_source_names">
+        <item>@string/vr_depth_source_zipdepth</item>
+        <item>MiDaS 视频 3D</item>
+        <item>关闭</item>
+        <item>测试图案：平面</item>
+        <item>测试图案：水平渐变</item>
+        <item>测试图案：中央凸起</item>
+        <item>测试图案：左右眼分配</item>
+        <item>测试图案：视差测量</item>
+    </string-array>
+    <string-array name="vr_env_res_names">
+        <item>低</item>
+        <item>标准</item>
+        <item>高</item>
+        <item>极高（实验性）</item>
+    </string-array>
+    <string-array name="vr_file_log_names">
+        <item>关闭</item>
+        <item>警告和错误</item>
+        <item>详细</item>
+    </string-array>
+    <string name="media_folder">文件夹</string>
+    <string name="media_image_thumbnail">图片缩略图</string>
+    <string name="media_video_thumbnail">视频缩略图</string>
+    <string name="stats_warp">GPU 重投影：%1$.2f 毫秒</string>
+    <string name="stats_depth_rate">深度更新：%1$.1f 次/秒（目标 %2$d）</string>
+    <string name="stats_depth_model">深度模型：%1$s</string>
+    <string name="stats_inference">深度推理：%1$.1f 毫秒</string>
+    <string name="stats_age">深度图年龄：%1$.0f 毫秒</string>
+    <string name="stats_skips">跳过深度帧数：%1$d</string>
+</resources>

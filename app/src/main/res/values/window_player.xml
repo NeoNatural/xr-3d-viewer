@@ -7,11 +7,11 @@
     <string name="window_pause">Pause</string>
     <string name="window_position">Playback position</string>
     <string name="window_sdk_required">Window 3D requires Meta VR OS SDK 207 or later.</string>
-    <string name="window_render_error">Could not open the stereo display in this window.</string>
+    <string name="window_render_error">Could not open the stereo display.</string>
     <string name="window_3d">3D</string>
     <string name="window_convergence">Convergence</string>
     <string name="window_reset">Reset</string>
-    <string name="window_resolution">Video output per eye (long edge)</string>
+    <string name="window_resolution">Windowed local/SMB video output per eye (long edge)</string>
     <string name="window_resolution_key" translatable="false">window_video_eye_long_edge</string>
     <string-array name="window_resolution_values" translatable="false">
         <item>1920</item>

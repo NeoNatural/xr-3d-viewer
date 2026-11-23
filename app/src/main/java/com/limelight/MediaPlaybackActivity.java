@@ -1,6 +1,10 @@
 package com.limelight;
 
-import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.view.View;
+import android.view.Window;
+import android.widget.CheckBox;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -21,14 +25,13 @@ import android.widget.Toast;
 import com.limelight.binding.video.XrRenderer;
 import com.limelight.binding.video.XrShared;
 import com.limelight.preferences.PreferenceConfiguration;
-import com.limelight.utils.UiHelper;
 
 import metavr.view.SurfaceControlExt;
 import metavr.view.SurfaceViewExt;
 
-/** Shared Quest panel. Only the media surface is stereoscopic. */
-abstract class WindowMediaActivity extends Activity {
-    protected XrRenderer panelRenderer;
+/** Starts an OpenXR session or builds a Quest panel with a stereoscopic media surface. */
+public abstract class MediaPlaybackActivity extends LocalizedActivity implements XrRenderer.InputListener {
+    protected XrRenderer renderer;
     protected PreferenceConfiguration mediaPrefs;
     protected LinearLayout controls;
     protected LinearLayout layout;
@@ -38,16 +41,46 @@ abstract class WindowMediaActivity extends Activity {
     private float displayAspect = 16f / 9f;
 
     private int separation, convergence;
-    private String separationKey, convergenceKey;
+    private String separationKey, convergenceKey, edgeKey;
 
-    protected boolean openPanel(int eyeWidth, int eyeHeight, String profile) {
-        UiHelper.setLocale(this);
+    public static final String MODE_KEY = "playback_presentation";
+
+    public static Intent playbackIntent(Context context, Class<? extends MediaPlaybackActivity> immersive,
+                                        Class<? extends MediaPlaybackActivity> window) {
+        String mode = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(MODE_KEY, "immersive");
+        return new Intent(context, "window".equals(mode) ? window : immersive);
+    }
+
+    protected boolean windowed() { return false; }
+
+    @Override public void onVrPointerMove(float u, float v) { }
+    @Override public void onVrButton(int button, boolean down) { }
+    @Override public void onVrScroll(int clicks) { }
+    @Override public void onVrKey(int code) { }
+    @Override public void onVrExit() { runOnUiThread(this::finish); }
+
+    protected boolean openPlayback(int eyeWidth, int eyeHeight, String profile, boolean forceModel) {
         mediaPrefs = PreferenceConfiguration.readPreferences(this);
+        if (forceModel) mediaPrefs.vrDepthMode = XrShared.DEPTH_MODE_MODEL;
+        if (!windowed()) {
+            requestWindowFeature(Window.FEATURE_NO_TITLE);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN
+                    | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN);
+            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+            renderer = new XrRenderer();
+            renderer.setInputListener(this);
+            return true;
+        }
         stereo = mediaPrefs.vrDepthMode != XrShared.DEPTH_MODE_OFF;
         video = new SurfaceView(this);
         try {
             if (metavr.os.Build.Version.getApiVersion() < 207) {
-                failPanel(R.string.window_sdk_required);
+                showPlaybackError(R.string.window_sdk_required);
                 return false;
             }
             SurfaceViewExt.setStereoComposition(video, stereo
@@ -55,16 +88,18 @@ abstract class WindowMediaActivity extends Activity {
                     : SurfaceControlExt.STEREO_COMPOSITION_MONO);
         } catch (LinkageError | RuntimeException unavailable) {
             LimeLog.warning("Quest stereo surface unavailable: " + unavailable);
-            failPanel(R.string.window_sdk_required);
+            showPlaybackError(R.string.window_sdk_required);
             return false;
         }
-        panelRenderer = new XrRenderer(() -> runOnUiThread(() -> failPanel(R.string.window_render_error)));
+        renderer = new XrRenderer(() -> runOnUiThread(() -> showPlaybackError(R.string.window_render_error)));
         separationKey = PreferenceConfiguration.VR_SEPARATION_PREF_STRING + profile;
         convergenceKey = PreferenceConfiguration.VR_CONVERGENCE_PREF_STRING + profile;
         SharedPreferences saved = PreferenceManager.getDefaultSharedPreferences(this);
+        edgeKey = XrRenderer.EDGE_CORRECTION_PREF + profile;
+        renderer.setPanelEdgeCorrection(saved.getBoolean(edgeKey, false));
         separation = saved.getInt(separationKey, mediaPrefs.vrStereoSeparation);
         convergence = saved.getInt(convergenceKey, mediaPrefs.vrConvergence);
-        panelRenderer.setPanelDepth(separation, convergence);
+        renderer.setPanelDepth(separation, convergence);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -82,10 +117,10 @@ abstract class WindowMediaActivity extends Activity {
         holder.addCallback(new SurfaceHolder.Callback() {
             @Override public void surfaceCreated(SurfaceHolder h) { }
             @Override public void surfaceChanged(SurfaceHolder h, int format, int w, int hgt) {
-                panelRenderer.setPanelSurface(h.getSurface());
+                renderer.setPanelSurface(h.getSurface());
             }
             @Override public void surfaceDestroyed(SurfaceHolder h) {
-                panelRenderer.setPanelSurface(null);
+                renderer.setPanelSurface(null);
             }
         });
         setPanelGeometry(eyeWidth, eyeHeight, eyeWidth / (float)eyeHeight);
@@ -93,7 +128,7 @@ abstract class WindowMediaActivity extends Activity {
         return true;
     }
 
-    protected void failPanel(int message) {
+    protected void showPlaybackError(int message) {
         if (isFinishing() || isDestroyed()) return;
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
         finish();
@@ -126,12 +161,25 @@ abstract class WindowMediaActivity extends Activity {
         sliders.setPadding(pad, pad, pad, 0);
         addDepthSlider(sliders, true);
         addDepthSlider(sliders, false);
+        SharedPreferences saved = PreferenceManager.getDefaultSharedPreferences(this);
+        if (mediaPrefs.vrDepthMode == XrShared.DEPTH_MODE_MODEL) {
+            CheckBox edge = new CheckBox(this);
+            edge.setText(R.string.xr_edge_correction);
+            edge.setChecked(saved.getBoolean(edgeKey, false));
+            edge.setOnCheckedChangeListener((button, enabled) -> {
+                renderer.setPanelEdgeCorrection(enabled);
+                saved.edit().putBoolean(edgeKey, enabled).apply();
+            });
+            sliders.addView(edge);
+        }
         new AlertDialog.Builder(this).setTitle(R.string.window_3d)
                 .setView(sliders).setPositiveButton(android.R.string.ok, null)
                 .setNeutralButton(R.string.window_reset, (dialog, which) -> {
                     separation = PreferenceConfiguration.DEFAULT_VR_SEPARATION;
                     convergence = PreferenceConfiguration.DEFAULT_VR_CONVERGENCE;
-                    panelRenderer.setPanelDepth(separation, convergence);
+                    renderer.setPanelEdgeCorrection(false);
+                    saved.edit().putBoolean(edgeKey, false).apply();
+                    renderer.setPanelDepth(separation, convergence);
                 })
                 .setOnDismissListener(dialog -> PreferenceManager.getDefaultSharedPreferences(this)
                         .edit().putInt(separationKey, separation)
@@ -158,7 +206,7 @@ abstract class WindowMediaActivity extends Activity {
                 format.setMaximumFractionDigits(1);
                 String percent = format.format(adjustSeparation ? value / 1000.0 : value / 100.0);
                 label.setText(getString(title) + "  " + percent);
-                panelRenderer.setPanelDepth(separation, convergence);
+                renderer.setPanelDepth(separation, convergence);
             }
         };
         slider.setOnSeekBarChangeListener(listener);

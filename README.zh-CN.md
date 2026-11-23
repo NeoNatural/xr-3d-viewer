@@ -2,9 +2,9 @@
 
 [English](README.md) | **简体中文**
 
-**Quest 窗口 3D 实验分支**（`experiment/quest-window-3d`）。安装 Window 3D 版后，从本地目录或 SMB 共享打开图片、视频，画面会显示在系统窗口。点击播放控件中的 **3D** 可调整视差和会聚位置。视频每眼输出长边默认上限为 1920 像素，可在媒体设置中选择 2560 或 3840，再打开同一段视频对照。
+**Quest 3D 实验分支**（`experiment/quest-window-3d`）。点击首页齿轮，在 **通用 → 3D 播放模式** 中选择沉浸式 3D（默认）或窗口 3D。选择会在下次打开本地或 SMB 图片、视频，或在支持的网页上全屏播放视频时生效。在 **通用 → 语言** 中可选择 English（默认）或简体中文。
 
-本分支使用独立包名，可与下文介绍的沉浸式版本并装。设备需要支持 Meta VR OS SDK 207 或更高版本。[Meta 立体表面合成文档](https://developers.meta.com/vr/documentation/android-apps/stereo-surface-composition/)
+实验版可与主版本并装。窗口 3D 需要设备支持 Meta VR OS SDK 207 或更高版本。 [Meta 立体表面合成文档](https://developers.meta.com/vr/documentation/android-apps/stereo-surface-composition/)
 
 XR 3D Viewer 是一款开源的 Android/OpenXR 媒体查看器，可在一体式头显上将普通的
 2D 照片和视频转换成立体 3D。媒体既可以从本地存储打开，也可以直接从 SMB/NAS

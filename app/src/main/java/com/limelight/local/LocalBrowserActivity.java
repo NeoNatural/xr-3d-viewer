@@ -1,7 +1,7 @@
 package com.limelight.local;
 
-import android.app.Activity;
 import android.content.Intent;
+import com.limelight.MediaPlaybackActivity;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.net.Uri;
@@ -22,10 +22,13 @@ import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.limelight.LocalizedActivity;
 import com.limelight.R;
 import com.limelight.PcView;
 import com.limelight.StaticImageXrActivity;
+import com.limelight.WindowImageActivity;
 import com.limelight.VideoXrActivity;
+import com.limelight.WindowVideoActivity;
 import com.limelight.media.MediaEntry;
 import com.limelight.media.MediaFileSize;
 import com.limelight.media.MediaSortSelector;
@@ -42,7 +45,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /** Storage Access Framework browser with the same photo/video behaviour as SMB. */
-public final class LocalBrowserActivity extends Activity {
+public final class LocalBrowserActivity extends LocalizedActivity {
     private static final int PICK_TREE = 1;
     private static final String PREFS = "local_media_browser";
     private static final String LAST_TREE = "last_tree";
@@ -73,14 +76,14 @@ public final class LocalBrowserActivity extends Activity {
         root.addView(actions);
         upButton = new ImageButton(this);
         upButton.setImageResource(R.drawable.ic_browser_back);
-        upButton.setContentDescription("Back to menu");
+        upButton.setContentDescription(getString(R.string.back_menu));
         int backSize = Math.round(48 * getResources().getDisplayMetrics().density);
         int backPadding = Math.round(12 * getResources().getDisplayMetrics().density);
         upButton.setPadding(backPadding, backPadding, backPadding, backPadding);
         upButton.setEnabled(true);
         actions.addView(upButton, new LinearLayout.LayoutParams(backSize, backSize));
         chooseButton = new Button(this);
-        chooseButton.setText("Choose local folder");
+        chooseButton.setText(getString(R.string.choose_local_folder));
         actions.addView(chooseButton, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 2));
         sortSelector = new MediaSortSelector(this, () -> {
@@ -137,14 +140,14 @@ public final class LocalBrowserActivity extends Activity {
             String rootId = DocumentsContract.getTreeDocumentId(selected);
             loadDirectory(DocumentsContract.buildDocumentUriUsingTree(selected, rootId), false, false);
         } catch (RuntimeException error) {
-            status.setText("Unable to open folder: " + error.getMessage());
+            status.setText(getString(R.string.local_open_failed, error.getMessage()));
         }
     }
 
     private void loadDirectory(Uri directory, boolean rememberParent, boolean goingBack) {
         if (busy) return;
         setBusy(true);
-        status.setText("Loading…");
+        status.setText(getString(R.string.local_loading));
         loader.execute(() -> {
             ArrayList<MediaEntry> found = new ArrayList<>();
             HashSet<String> foundVideos = new HashSet<>();
@@ -187,16 +190,16 @@ public final class LocalBrowserActivity extends Activity {
                     if (adapter != null) adapter.close();
                     adapter = new LocalAdapter();
                     list.setAdapter(adapter);
-                    status.setText(found.size() + " media items — " + directory);
+                    status.setText(getString(R.string.local_items, found.size(), directory));
                     setBusy(false);
                     if (found.isEmpty()) Toast.makeText(this,
-                            "No supported photos or videos in this folder.",
+                            getString(R.string.local_folder_empty),
                             Toast.LENGTH_SHORT).show();
                 });
             } catch (Exception error) {
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
-                    status.setText("Unable to read folder: " + error.getMessage());
+                    status.setText(getString(R.string.local_read_failed, error.getMessage()));
                     setBusy(false);
                 });
             }
@@ -216,7 +219,7 @@ public final class LocalBrowserActivity extends Activity {
                 if (item.uri.equals(entry.uri)) selected = images.size();
                 images.add(Uri.parse(item.uri));
             }
-            Intent intent = new Intent(this, StaticImageXrActivity.class);
+            Intent intent = MediaPlaybackActivity.playbackIntent(this, StaticImageXrActivity.class, WindowImageActivity.class);
             intent.setData(Uri.parse(entry.uri));
             intent.putParcelableArrayListExtra(StaticImageXrActivity.EXTRA_LOCAL_IMAGE_URIS, images);
             intent.putExtra(StaticImageXrActivity.EXTRA_LOCAL_START_INDEX, selected);
@@ -230,7 +233,7 @@ public final class LocalBrowserActivity extends Activity {
                 if (item.uri.equals(entry.uri)) selected = videos.size();
                 videos.add(Uri.parse(item.uri));
             }
-            Intent intent = new Intent(this, VideoXrActivity.class);
+            Intent intent = MediaPlaybackActivity.playbackIntent(this, VideoXrActivity.class, WindowVideoActivity.class);
             intent.setData(Uri.parse(entry.uri));
             intent.putParcelableArrayListExtra(VideoXrActivity.EXTRA_VIDEO_URIS, videos);
             intent.putExtra(VideoXrActivity.EXTRA_START_INDEX, selected);
@@ -254,7 +257,7 @@ public final class LocalBrowserActivity extends Activity {
     private void setBusy(boolean value) {
         busy = value;
         upButton.setEnabled(!value);
-        upButton.setContentDescription(parents.isEmpty() ? "Back to menu" : "Back to parent folder");
+        upButton.setContentDescription(parents.isEmpty() ? getString(R.string.back_menu) : getString(R.string.back_parent));
         upButton.setAlpha(upButton.isEnabled() ? 1.0f : 0.35f);
         chooseButton.setEnabled(!value);
         list.setEnabled(!value);

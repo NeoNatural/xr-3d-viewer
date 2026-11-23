@@ -45,64 +45,6 @@
         <item>71</item>
     </string-array>
 
-    <!-- Don't forget to update locales_config.xml when you modify this! -->
-    <string-array name="language_names" translatable="false">
-        <item>Default</item>
-        <item>English</item>
-        <item>Italiano</item>
-        <item>日本語</item>
-        <item>Русский</item>
-        <item>Nederlands</item>
-        <item>中文(简体)</item>
-        <item>中文(繁體)</item>
-        <item>한국어</item>
-        <item>Español</item>
-        <item>Français</item>
-        <item>Deutsch</item>
-        <item>Română</item>
-        <item>Українська</item>
-        <item>Norsk bokmål</item>
-        <item>Tiếng Việt</item>
-        <item>Magyar</item>
-        <item>Ελληνικά</item>
-        <item>Português do Brasil</item>
-        <item>Čeština</item>
-        <item>עִבְרִית</item>
-        <item>Svenska</item>
-        <item>Bahasa Indonesia</item>
-        <item>Esperanto</item>
-        <item>Latviešu valoda</item>
-        <item>தமிழ்</item>
-    </string-array>
-    <string-array name="language_values" translatable="false">
-        <item>default</item>
-        <item>en</item>
-        <item>it</item>
-        <item>ja</item>
-        <item>ru</item>
-        <item>nl</item>
-        <item>zh-CN</item>
-        <item>zh-TW</item>
-        <item>ko</item>
-        <item>es</item>
-        <item>fr</item>
-        <item>de</item>
-        <item>ro</item>
-        <item>uk</item>
-        <item>nb-NO</item>
-        <item>vi</item>
-        <item>hu</item>
-        <item>el</item>
-        <item>pt-BR</item>
-        <item>cs</item>
-        <item>iw</item>
-        <item>sv</item>
-        <item>in</item>
-        <item>eo</item>
-        <item>lv</item>
-        <item>ta</item>
-    </string-array>
-
     <string-array name="video_format_names">
         <item>@string/videoformat_auto</item>
         <item>@string/videoformat_av1always</item>

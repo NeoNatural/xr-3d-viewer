@@ -1,0 +1,9 @@
+<resources>
+    <string name="general_settings">通用</string>
+    <string name="playback_mode">3D 播放模式</string>
+    <string name="app_language">语言</string>
+    <string-array name="presentation_names">
+        <item>沉浸式 3D</item>
+        <item>窗口 3D</item>
+    </string-array>
+</resources>

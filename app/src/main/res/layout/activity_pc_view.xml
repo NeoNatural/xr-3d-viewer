@@ -30,6 +30,14 @@
         android:text="@string/browse_smb_media"
         android:textSize="20sp" />
 
+    <Button
+        android:id="@+id/browseWeb"
+        android:layout_width="match_parent"
+        android:layout_height="88dp"
+        android:layout_marginBottom="18dp"
+        android:text="@string/browse_web_video"
+        android:textSize="20sp" />
+
     <ImageButton
         android:id="@+id/settingsButton"
         android:layout_width="64dp"

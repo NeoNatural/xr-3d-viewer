@@ -259,6 +259,16 @@ static int initXrInstance(XrCtx* ctx) {
         if (layerProps.graphicsProperties.maxLayerCount > 0) {
             ctx->maxLayerCount = (int)layerProps.graphicsProperties.maxLayerCount;
         }
+        // Packed stereo must fit as one texture, even when each individual eye fits.
+        const int eyes = ctx->stereoMode == DEPTH_MODE_OFF ? 1 : 2;
+        const int maxW = (int)layerProps.graphicsProperties.maxSwapchainImageWidth / eyes;
+        const int maxH = (int)layerProps.graphicsProperties.maxSwapchainImageHeight;
+        if (maxW > 0 && maxH > 0 && (ctx->videoWidth > maxW || ctx->videoHeight > maxH)) {
+            double scale = fmin((double)maxW / ctx->videoWidth, (double)maxH / ctx->videoHeight);
+            ctx->videoWidth = (int)fmax(1, floor(ctx->videoWidth * scale));
+            ctx->videoHeight = (int)fmax(1, floor(ctx->videoHeight * scale));
+            LOGEV("runtime limited video output to %dx%d per eye", ctx->videoWidth, ctx->videoHeight);
+        }
         // Worth having in a user's log, it is the one place an unknown headset
         // names itself
         LOGEV("system %s (vendor 0x%x)", layerProps.systemName, layerProps.vendorId);
@@ -610,7 +620,7 @@ Java_com_limelight_binding_video_XrRenderer_nativeInit(JNIEnv* env, jobject thiz
                                                        jobject activity, jint width, jint height,
                                                        jint stereoMode, jint depthWidth,
                                                        jint depthHeight, jboolean depthDebug,
-                                                       jint convergence, jint depthScale,
+                                                       jint convergence, jboolean edgeCorrection, jint depthScale,
                                                        jboolean handTracking, jint sharpenMode,
                                                        jboolean perfOverlay, jboolean ambilight,
                                                        jint ambiLevel, jboolean roomLight,
@@ -632,6 +642,7 @@ Java_com_limelight_binding_video_XrRenderer_nativeInit(JNIEnv* env, jobject thiz
     ctx->videoHeight = height;
     ctx->videoDisplayAspect = (float)height / (float)width;
     ctx->stereoMode = stereoMode;
+    ctx->edgeCorrection = edgeCorrection;
     // The size the depth map runs at, from the model Java picked. Everything
     // the depth path allocates is sized from it, so it is settled before any
     // of that is built.
@@ -781,7 +792,8 @@ Java_com_limelight_binding_video_XrRenderer_nativeSetPanelSurface(
 JNIEXPORT jboolean JNICALL
 Java_com_limelight_binding_video_XrRenderer_nativeDrawPanel(
         JNIEnv* env, jobject thiz, jlong handle, jfloatArray matrix, jfloat separation,
-        jfloat convergence, jboolean eyeSwap, jfloat refreshHz) {
+        jfloat convergence, jboolean eyeSwap, jfloat refreshHz, jboolean edgeCorrection,
+        jboolean refreshWarpInputs) {
     XrCtx* ctx = (XrCtx*)(intptr_t)handle;
     EGLint width, height;
     if (!eglQuerySurface(ctx->eglDisplay, ctx->panelSurface, EGL_WIDTH, &width) ||
@@ -797,7 +809,8 @@ Java_com_limelight_binding_video_XrRenderer_nativeDrawPanel(
     if (atomic_load_explicit(&ctx->stillDepthPending, memory_order_acquire)) separation = 0;
     ctx->separationCurrent = separation;
     int64_t startNs = nowNs();
-    renderVideoFrame(ctx, texMatrix, separation);
+    ctx->edgeCorrection = edgeCorrection;
+    renderVideoFrame(ctx, texMatrix, separation, refreshWarpInputs || !ctx->everRendered);
     if (ctx->depthVideoSession) updateVideoDepthBudget(ctx, startNs, refreshHz);
     return eglSwapBuffers(ctx->eglDisplay, ctx->panelSurface) == EGL_TRUE;
 }

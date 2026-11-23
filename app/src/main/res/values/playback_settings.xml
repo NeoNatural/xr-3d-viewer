@@ -1,0 +1,21 @@
+<resources>
+    <string name="general_settings">General</string>
+    <string name="playback_mode">3D playback mode</string>
+    <string name="app_language">Language</string>
+    <string-array name="presentation_names">
+        <item>Immersive 3D</item>
+        <item>Windowed 3D</item>
+    </string-array>
+    <string-array name="presentation_values" translatable="false">
+        <item>immersive</item>
+        <item>window</item>
+    </string-array>
+    <string-array name="app_language_names" translatable="false">
+        <item>English</item>
+        <item>简体中文</item>
+    </string-array>
+    <string-array name="app_language_values" translatable="false">
+        <item>en</item>
+        <item>zh-CN</item>
+    </string-array>
+</resources>

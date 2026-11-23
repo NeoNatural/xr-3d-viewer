@@ -45,7 +45,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.List;
 
 /** Displays local and SMB images on the stereo panel. */
-public class StaticImageXrActivity extends WindowMediaActivity {
+public class StaticImageXrActivity extends MediaPlaybackActivity {
     public static final String EXTRA_SMB_URI = "smbUri";
     public static final String EXTRA_SMB_DIRECTORY = "smbDirectory";
     public static final String EXTRA_OPEN_STARTED_NS = "openStartedNs";
@@ -84,11 +84,13 @@ public class StaticImageXrActivity extends WindowMediaActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (!openPanel(FRAME_WIDTH, FRAME_HEIGHT, ".image")) return;
-        previous = addControl(R.string.window_previous, () -> navigate(-1));
-        next = addControl(R.string.window_next, () -> navigate(1));
-        previous.setEnabled(false);
-        next.setEnabled(false);
+        if (!openPlayback(FRAME_WIDTH, FRAME_HEIGHT, ".image", false)) return;
+        if (windowed()) {
+            previous = addControl(R.string.window_previous, () -> navigate(-1));
+            next = addControl(R.string.window_next, () -> navigate(1));
+            previous.setEnabled(false);
+            next.setEnabled(false);
+        }
 
         imageThread = new Thread(this::runImage, "Static Image XR Source");
         imageThread.start();
@@ -164,11 +166,11 @@ public class StaticImageXrActivity extends WindowMediaActivity {
             // session; this also removes their per-frame colour sample pass.
             prefs.vrAmbilight = false;
             prefs.vrRoomLight = false;
-            XrRenderer xr = panelRenderer;
+            XrRenderer xr = renderer;
             xr.setFastStillImageDepth(true);
             xr.setImageNavigationEnabled(currentIndex >= 0 && imageQueue.size() > 1);
             if (!xr.start(this, FRAME_WIDTH, FRAME_HEIGHT, prefs)) {
-                runOnUiThread(() -> failPanel(R.string.window_render_error));
+                runOnUiThread(() -> showPlaybackError(R.string.window_render_error));
                 return;
             }
             currentGeneration = xr.beginStillImageTransition();
@@ -290,6 +292,10 @@ public class StaticImageXrActivity extends WindowMediaActivity {
                                 + ", direction " + step + ", queue " + imageQueue.size());
                     }
                 }
+                if (!windowed() && currentIndex >= 0) {
+                    xr.setImageNavigationDepthReady(depthReadyAt(nearby, currentIndex - 1),
+                            depthReadyAt(nearby, currentIndex + 1));
+                }
                 if (frameDirty) {
                     Canvas canvas = null;
                     boolean framePosted = false;
@@ -358,7 +364,7 @@ public class StaticImageXrActivity extends WindowMediaActivity {
             recycleTask(navigation, recycled);
             for (FutureTask<PreparedImage> task : nearby.values()) recycleTask(task, recycled);
             prefetch.shutdownNow();
-            XrRenderer xr = panelRenderer;
+            XrRenderer xr = renderer;
             if (xr != null) {
                 xr.prepareForStop();
                 xr.cleanup();
@@ -475,6 +481,14 @@ public class StaticImageXrActivity extends WindowMediaActivity {
             FutureTask<PreparedImage> neighbor = ensureDecoded(decoder, nearby, opposite);
             scheduleDepthOne(worker, batcher, neighbor, depthScheduled);
         }
+    }
+
+    private boolean depthReadyAt(Map<Integer, FutureTask<PreparedImage>> nearby, int index) {
+        if (index < 0 || index >= imageQueue.size()) return true;
+        FutureTask<PreparedImage> task = nearby.get(index);
+        if (task == null || !task.isDone() || task.isCancelled()) return false;
+        try { return task.get().depthReady; }
+        catch (Exception e) { return false; }
     }
 
     private void evictDistant(Map<Integer, FutureTask<PreparedImage>> nearby, int index,
@@ -681,6 +695,7 @@ public class StaticImageXrActivity extends WindowMediaActivity {
     }
 
     private void updateNavigation(int index) {
+        if (!windowed()) return;
         boolean hasPrevious = index > 0;
         boolean hasNext = index >= 0 && index + 1 < imageQueue.size();
         runOnUiThread(() -> {
@@ -688,6 +703,8 @@ public class StaticImageXrActivity extends WindowMediaActivity {
             next.setEnabled(hasNext);
         });
     }
+
+    @Override public void onVrImageNavigate(int direction) { navigate(direction); }
 
     private void navigate(int direction) {
         requestedStepNs.set(System.nanoTime());

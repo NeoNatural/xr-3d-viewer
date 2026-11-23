@@ -580,6 +580,8 @@ typedef struct {
     // adjustment sets this so the current colour/depth textures are warped
     // again even though SurfaceTexture has nothing new to latch.
     int stereoRedrawPending;
+    int edgeCorrection;
+    int drawnEdgeCorrection;
     float distanceOverride;
     float screenOverride;
 
@@ -719,6 +721,7 @@ typedef struct {
     GLint tintUniform;
     GLint barTestUniform;
     GLint occlusionUniform;
+    GLint edgeCorrectionUniform;
     GLint eyeIndexUniform;
     GLint convergenceUniform;
     GLint dispTexelsUniform;
@@ -1167,7 +1170,7 @@ GLuint compileShader(GLenum type, const char* src);
 int linkProgram(GLuint* out, const char* fragmentSrc, const char* what);
 int initGl(XrCtx* ctx);
 void updateVideoDepthBudget(XrCtx* ctx, int64_t startNs, float hz);
-void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation);
+void renderVideoFrame(XrCtx* ctx, const float* texMatrix, float separation, int refreshWarpInputs);
 
 // xr_depth.c: the depth model staging and the stage thread's uploads
 int initDepthModel(XrCtx* ctx);
@@ -1214,10 +1217,10 @@ void exitButtonPlacement(XrCtx* ctx, float height, Vec3* outLocal, float* outSid
 int exitButtonHit(XrCtx* ctx, float u, float v, float height);
 XrPosef exitPromptPose(XrCtx* ctx, float* outWidth, float* outHeight);
 int exitPromptZone(float u, float v);
-int cogTabRowCount(int tab);
+int cogTabRowCount(XrCtx* ctx);
 float cogSliderValue(XrCtx* ctx, int tab, int slider);
 void cogApplySlider(XrCtx* ctx, int tab, int slider, float pu);
-int cogOptionCells(int option);
+int cogOptionCells(int tab, int option);
 int cogOptionValue(XrCtx* ctx, int option, int headLocked);
 int cogApplyOption(XrCtx* ctx, int option, int cell);
 void cogDragEnded(XrCtx* ctx, float* out);

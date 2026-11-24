@@ -169,7 +169,7 @@ public class PreferenceConfiguration {
     private static final String DEFAULT_VR_ENV_RES = "standard";
     private static final String DEFAULT_VR_SHARPENING = "quality";
     private static final boolean DEFAULT_VR_EYE_SWAP = false;
-    private static final boolean DEFAULT_VR_PASSTHROUGH = false;
+    private static final boolean DEFAULT_VR_PASSTHROUGH = true;
     private static final boolean DEFAULT_VR_GAZE = true;
     private static final boolean DEFAULT_VR_HAND_TRACKING = true;
     private static final boolean DEFAULT_VR_POINTER = true;

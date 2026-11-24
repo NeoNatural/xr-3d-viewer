@@ -211,6 +211,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
     private Context prefsContext;
     private PreferenceConfiguration prefConfig;
     public static final String EDGE_CORRECTION_PREF = "vr_edge_correction";
+    public static final boolean DEFAULT_EDGE_CORRECTION = DEFAULT_EDGE_CORRECTION_ENABLED != 0;
     private volatile float currentDisplayAspect = 9.0f / 16.0f;
 
     // The 360 photo shown behind the screen. Decoded off the frame loop and
@@ -487,7 +488,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
         currentDisplayAspect = videoWidth > 0 ? (float) videoHeight / videoWidth : 9.0f / 16.0f;
         applyMediaPreferences(prefs);
         final boolean edgeCorrection = PreferenceManager.getDefaultSharedPreferences(prefsContext)
-                .getBoolean(preferenceKey(EDGE_CORRECTION_PREF), false);
+                .getBoolean(preferenceKey(EDGE_CORRECTION_PREF), DEFAULT_EDGE_CORRECTION);
         final CountDownLatch initLatch = new CountDownLatch(1);
         final boolean[] initOk = new boolean[1];
 
@@ -1618,7 +1619,7 @@ public class XrRenderer implements SurfaceTexture.OnFrameAvailableListener {
                 prefConfig.vrConvergence = PreferenceConfiguration.DEFAULT_VR_CONVERGENCE;
             }
             PreferenceManager.getDefaultSharedPreferences(prefsContext).edit()
-                    .putBoolean(preferenceKey(EDGE_CORRECTION_PREF), false)
+                    .putBoolean(preferenceKey(EDGE_CORRECTION_PREF), DEFAULT_EDGE_CORRECTION)
                     .putInt(preferenceKey(PreferenceConfiguration.VR_SEPARATION_PREF_STRING),
                             PreferenceConfiguration.DEFAULT_VR_SEPARATION)
                     .putInt(preferenceKey(PreferenceConfiguration.VR_CONVERGENCE_PREF_STRING),

@@ -32,6 +32,7 @@ public class MoonlightApplication extends Application {
         PreferenceConfiguration.migrateDepthRate(this);
         PreferenceConfiguration.seedGen1PerfProfile(this);
         PreferenceConfiguration.migrateDepthSource(this);
+        LocalizedActivity.migrateLanguagePreference(this);
 
         // Debug builds only, and nothing unless its property is set
         DepthSelfTest.startIfAsked(this);

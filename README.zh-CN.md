@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-**Quest 3D 实验分支**（`experiment/quest-window-3d`）。点击首页齿轮，在 **通用 → 3D 播放模式** 中选择沉浸式 3D（默认）或窗口 3D。选择会在下次打开本地或 SMB 图片、视频，或在支持的网页上全屏播放视频时生效。在 **通用 → 语言** 中可选择 English（默认）或简体中文。
+**Quest 3D 实验分支**（`experiment/quest-window-3d`）。点击首页齿轮，在 **通用 → 3D 播放模式** 中选择沉浸式 3D（默认）或窗口 3D。选择会在下次打开本地或 SMB 图片、视频，或在支持的网页上全屏播放视频时生效。沉浸式播放默认使用透视场景，两种模式均默认启用新版边缘填充。系统首选语言为中文时，应用使用简体中文；其他语言使用英文。在 **通用 → 语言** 中手动选择后，以保存的选择为准。
 
 实验版可与主版本并装。窗口 3D 需要设备支持 Meta VR OS SDK 207 或更高版本。 [Meta 立体表面合成文档](https://developers.meta.com/vr/documentation/android-apps/stereo-surface-composition/)
 

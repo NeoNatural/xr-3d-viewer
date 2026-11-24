@@ -1420,7 +1420,7 @@ static void updateCogPanel(XrCtx* ctx, InputFrame* f) {
             ctx->panelSeparation = 0.005f;
             ctx->separationCurrent = 0.005f;
             ctx->convergence = 0.5f;
-            ctx->edgeCorrection = 0;
+            ctx->edgeCorrection = DEFAULT_EDGE_CORRECTION_ENABLED;
             ctx->stereoRedrawPending = 1;
             f->out[IN_SETTING] = (float)SETTING_RESET_3D;
             f->out[IN_SETTING_VALUE] = 0.0f;

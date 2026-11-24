@@ -131,6 +131,7 @@
 #define SETTING_ROOM_LIGHT 7
 #define SETTING_HEAD_LOCK 8
 #define SETTING_EDGE_CORRECTION 9
+#define DEFAULT_EDGE_CORRECTION_ENABLED 1
 
 // Which Environment Res tier the room draws at
 #define ENV_RES_LOW 0

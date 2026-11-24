@@ -48,7 +48,7 @@
             android:key="checkbox_vr_passthrough"
             android:title="@string/title_vr_passthrough"
             android:summary="@string/summary_vr_passthrough"
-            android:defaultValue="false" />
+            android:defaultValue="true" />
         <ListPreference
             android:key="list_vr_depth_source"
             android:title="@string/title_vr_depth_source"

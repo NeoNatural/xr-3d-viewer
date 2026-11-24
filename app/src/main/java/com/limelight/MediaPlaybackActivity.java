@@ -96,7 +96,7 @@ public abstract class MediaPlaybackActivity extends LocalizedActivity implements
         convergenceKey = PreferenceConfiguration.VR_CONVERGENCE_PREF_STRING + profile;
         SharedPreferences saved = PreferenceManager.getDefaultSharedPreferences(this);
         edgeKey = XrRenderer.EDGE_CORRECTION_PREF + profile;
-        renderer.setPanelEdgeCorrection(saved.getBoolean(edgeKey, false));
+        renderer.setPanelEdgeCorrection(saved.getBoolean(edgeKey, XrRenderer.DEFAULT_EDGE_CORRECTION));
         separation = saved.getInt(separationKey, mediaPrefs.vrStereoSeparation);
         convergence = saved.getInt(convergenceKey, mediaPrefs.vrConvergence);
         renderer.setPanelDepth(separation, convergence);
@@ -165,7 +165,7 @@ public abstract class MediaPlaybackActivity extends LocalizedActivity implements
         if (mediaPrefs.vrDepthMode == XrShared.DEPTH_MODE_MODEL) {
             CheckBox edge = new CheckBox(this);
             edge.setText(R.string.xr_edge_correction);
-            edge.setChecked(saved.getBoolean(edgeKey, false));
+            edge.setChecked(saved.getBoolean(edgeKey, XrRenderer.DEFAULT_EDGE_CORRECTION));
             edge.setOnCheckedChangeListener((button, enabled) -> {
                 renderer.setPanelEdgeCorrection(enabled);
                 saved.edit().putBoolean(edgeKey, enabled).apply();
@@ -177,8 +177,8 @@ public abstract class MediaPlaybackActivity extends LocalizedActivity implements
                 .setNeutralButton(R.string.window_reset, (dialog, which) -> {
                     separation = PreferenceConfiguration.DEFAULT_VR_SEPARATION;
                     convergence = PreferenceConfiguration.DEFAULT_VR_CONVERGENCE;
-                    renderer.setPanelEdgeCorrection(false);
-                    saved.edit().putBoolean(edgeKey, false).apply();
+                    renderer.setPanelEdgeCorrection(XrRenderer.DEFAULT_EDGE_CORRECTION);
+                    saved.edit().putBoolean(edgeKey, XrRenderer.DEFAULT_EDGE_CORRECTION).apply();
                     renderer.setPanelDepth(separation, convergence);
                 })
                 .setOnDismissListener(dialog -> PreferenceManager.getDefaultSharedPreferences(this)

@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-**Quest 3D experiment** (`experiment/quest-window-3d`). From the home screen, open the gear and choose **General → 3D playback mode**. Immersive 3D is the default. Select Windowed 3D to open local and SMB photos or videos, and supported full-screen web videos, in a system window. The choice takes effect the next time you open media. Choose **General → Language** for English (default) or Simplified Chinese.
+**Quest 3D experiment** (`experiment/quest-window-3d`). From the home screen, open the gear and choose **General → 3D playback mode**. Immersive 3D is the default. Select Windowed 3D to open local and SMB photos or videos, and supported full-screen web videos, in a system window. The choice takes effect the next time you open media. Immersive playback starts in passthrough, and both modes use the corrected gap fill by default. A Chinese system language selects Simplified Chinese. Other system languages select English. A choice in **General → Language** takes precedence.
 
 The experimental app installs alongside the main app. Windowed 3D requires Meta VR OS SDK 207 or later. [Meta stereo surface composition guide](https://developers.meta.com/vr/documentation/android-apps/stereo-surface-composition/)
 

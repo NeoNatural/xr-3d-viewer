@@ -3,7 +3,9 @@ package com.limelight;
 import android.app.Activity;
 import android.app.LocaleManager;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.os.Build;
 import android.os.LocaleList;
 import android.preference.PreferenceManager;
@@ -17,20 +19,39 @@ public abstract class LocalizedActivity extends Activity {
 
     public static String language(Context context) {
         if (Build.VERSION.SDK_INT >= 33) {
-            LocaleList locales = context.getSystemService(LocaleManager.class).getApplicationLocales();
-            return !locales.isEmpty() && "zh".equals(locales.get(0).getLanguage()) ? "zh-CN" : "en";
+            LocaleManager manager = context.getSystemService(LocaleManager.class);
+            LocaleList locales = manager.getApplicationLocales();
+            if (locales.isEmpty()) locales = manager.getSystemLocales();
+            return supportedLanguage(locales.get(0));
         }
-        return PreferenceManager.getDefaultSharedPreferences(context).getString(LANGUAGE_KEY, "en");
+        String saved = PreferenceManager.getDefaultSharedPreferences(context).getString(LANGUAGE_KEY, null);
+        if (saved != null) return saved;
+        return supportedLanguage(Resources.getSystem().getConfiguration().locale);
+    }
+
+    static String supportedLanguage(Locale locale) {
+        return locale != null && "zh".equals(locale.getLanguage()) ? "zh-CN" : "en";
+    }
+
+    static void migrateLanguagePreference(Context context) {
+        if (Build.VERSION.SDK_INT < 33) return;
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        String saved = prefs.getString(LANGUAGE_KEY, null);
+        if (saved == null) return;
+        LocaleManager manager = context.getSystemService(LocaleManager.class);
+        if (manager.getApplicationLocales().isEmpty()) {
+            manager.setApplicationLocales(LocaleList.forLanguageTags(saved));
+        }
+        prefs.edit().remove(LANGUAGE_KEY).apply();
     }
 
     public void selectLanguage(String tag) {
-        if (tag.equals(language(this))) return;
         if (Build.VERSION.SDK_INT >= 33) {
             getSystemService(LocaleManager.class).setApplicationLocales(LocaleList.forLanguageTags(tag));
         } else {
             PreferenceManager.getDefaultSharedPreferences(this).edit().putString(LANGUAGE_KEY, tag).apply();
         }
-        recreate();
+        if (!tag.equals(attachedLanguage)) recreate();
     }
 
     @Override protected void attachBaseContext(Context base) {

@@ -36,20 +36,43 @@ const char* const FRAGMENT_SRC =
     "uniform float u_lowResWidth;\n"
     "uniform float u_frameWidth;\n"
     "out vec4 fragColor;\n"
-    // Neighboring offset rows choose their visible surfaces independently.
-    // Reconstruct the seed vertically with a cubic B-spline. Folding four
-    // row weights into two linear reads preserves horizontal sampling.
-    "vec2 offsetAt(vec2 uv) {\n"
-    "    float rows = float(textureSize(u_offsets, 0).y);\n"
-    "    float y = uv.y * rows - 0.5;\n"
-    "    float f = fract(y), t = 1.0 - f;\n"
-    "    float w0 = t*t*t / 6.0, w3 = f*f*f / 6.0;\n"
-    "    float w1 = (4.0 - 6.0*f*f + 3.0*f*f*f) / 6.0;\n"
-    "    float a = w0 + w1, b = 1.0 - a;\n"
-    "    float base = floor(y) + 0.5;\n"
-    "    vec2 lo = texture(u_offsets, vec2(uv.x, (base - w0/a) / rows)).rg;\n"
-    "    vec2 hi = texture(u_offsets, vec2(uv.x, (base + 1.0 + w3/b) / rows)).rg;\n"
-    "    return a * lo + b * hi;\n"
+    // Resolve only expanding depth edges. The depth grid brackets the silhouette;
+    // colour at the two full-resolution projections distinguishes visible hair
+    // from foreground colour that the inverse warp stretched into the gap.
+    "vec4 sourceAt(float x) {\n"
+    "    return texture(u_texture, (u_texmatrix * vec4(x, v_plain.y, 0.0, 1.0)).xy);\n"
+    "}\n"
+    "vec4 fillGap(float seed, float pixel, vec4 original, float mask) {\n"
+    "    float side = sign(u_disparity);\n"
+    "    float radius = side * 2.0 / u_lowResWidth;\n"
+    "    float bg = clamp(seed - radius, 0.0, 1.0);\n"
+    "    float fg = clamp(seed + radius, 0.0, 1.0);\n"
+    "    float farD = texture(u_depth, vec2(bg, v_plain.y)).a;\n"
+    "    float nearD = texture(u_depth, vec2(fg, v_plain.y)).a;\n"
+    "    if (abs(u_disparity) * (nearD - farD) <= pixel) return original;\n"
+    "    vec3 farColor = sourceAt(bg).rgb;\n"
+    "    vec3 axis = sourceAt(fg).rgb - farColor;\n"
+    "    float contrast = dot(axis, axis);\n"
+    "    if (contrast < 0.0025) return original;\n"
+    "    float nearX = v_plain.x - u_disparity * (nearD - u_convergence);\n"
+    "    float farX = v_plain.x - u_disparity * (farD - u_convergence);\n"
+    "    if ((farX - bg) * side < -pixel || (nearX - fg) * side > pixel) return original;\n"
+    "    vec4 nearSample = sourceAt(nearX);\n"
+    "    vec4 farSample = sourceAt(farX);\n"
+    // Keep the original full-resolution sampling when all three reads already
+    // describe the same surface, including the mask's bilinear fringe.
+    "    vec3 across = nearSample.rgb - farSample.rgb;\n"
+    "    vec3 change = original.rgb - nearSample.rgb;\n"
+    "    if (max(dot(across, across), dot(change, change)) < 0.04 * contrast) return original;\n"
+    "    vec3 farDelta = farSample.rgb - farColor;\n"
+    "    vec3 nearDelta = nearSample.rgb - (farColor + axis);\n"
+    "    float farVisible = 1.0 - smoothstep(0.04, 0.35, dot(farDelta, farDelta) / contrast);\n"
+    "    float nearVisible = 1.0 - smoothstep(0.04, 0.35, dot(nearDelta, nearDelta) / contrast);\n"
+    // In a gap the far projection hits old foreground and the near projection
+    // reaches exposed background. Use the latter as the donor. A visible
+    // strand at that near projection also keeps its real colour and position.
+    "    vec4 filled = mix(nearSample, farSample, farVisible * (1.0 - nearVisible));\n"
+    "    return mix(original, filled, smoothstep(0.0, 0.5, mask));\n"
     "}\n"
     "void main() {\n"
     "    float d = texture(u_depth, v_plain).a;\n"
@@ -58,6 +81,7 @@ const char* const FRAGMENT_SRC =
     "        return;\n"
     "    }\n"
     "    vec2 tc = v_plain;\n"
+    "    float gapMask = 0.0, seed = 0.0;\n"
     "    if (u_occlusion > 0.5) {\n"
     // The offset map already picked the right surface. All that is left is
     // the exact position on it, which the low resolution search only knew to
@@ -65,20 +89,19 @@ const char* const FRAGMENT_SRC =
     // silhouette. Refine against the interpolated depth at eye resolution.
     "        int reach = int(ceil(abs(u_dispTexels)\n"
     "                        * max(u_convergence, 1.0 - u_convergence))) + 2;\n"
-    "        vec2 enc = u_edgeCorrection ? offsetAt(v_plain) : texture(u_offsets, v_plain).rg;\n"
+    "        vec4 enc = texture(u_offsets, v_plain);\n"
+    "        gapMask = u_eyeIndex < 0.5 ? enc.b : enc.a;\n"
     "        float off = (u_eyeIndex < 0.5 ? enc.r : enc.g) - 0.5;\n"
     "        tc.x = v_plain.x + off * 2.0 * float(reach) / u_lowResWidth;\n"
+    "        seed = tc.x;\n"
     "        float h = 1.0 / u_frameWidth;\n"
     "        for (int i = 0; i < 2; i++) {\n"
     "            float d0 = texture(u_depth, vec2(tc.x, v_plain.y)).a;\n"
     "            float dm = texture(u_depth, vec2(tc.x - h, v_plain.y)).a;\n"
     "            float dp = texture(u_depth, vec2(tc.x + h, v_plain.y)).a;\n"
     "            float e = (tc.x - v_plain.x) + u_disparity * (d0 - u_convergence);\n"
-    // At an occlusion fold the local projection can run backwards. Keep
-    // the correction direction consistent with the visible branch so a
-    // steep silhouette does not pick up extra foreground/background crossings.
     "            float slope = 1.0 + u_disparity * (dp - dm) / (2.0 * h);\n"
-    "            if ((u_edgeCorrection ? slope : abs(slope)) < 0.25) slope = 0.25;\n"
+    "            if (abs(slope) < 0.25) slope = 0.25;\n"
     "            tc.x -= clamp(e / slope, -4.0 * h, 4.0 * h);\n"
     "        }\n"
     "    }\n"
@@ -91,6 +114,8 @@ const char* const FRAGMENT_SRC =
     "        return;\n"
     "    }\n"
     "    fragColor = texture(u_texture, (u_texmatrix * vec4(tc, 0.0, 1.0)).xy);\n"
+    "    if (u_edgeCorrection && gapMask > 0.0)\n"
+    "        fragColor = fillGap(seed, 1.0 / u_frameWidth, fragColor, gapMask);\n"
     "    fragColor.rgb *= u_tint;\n"
     "}\n";
 
@@ -244,7 +269,7 @@ const char* const OFFSET_FRAGMENT_SRC =
     "    int y = int(gl_FragCoord.y);\n"
     "    int reach = int(ceil(abs(u_dispTexels)\n"
     "                    * max(u_convergence, 1.0 - u_convergence))) + 2;\n"
-    "    vec2 result = vec2(0.0);\n"
+    "    vec2 result = vec2(0.0), gap = vec2(0.0);\n"
     "    for (int eye = 0; eye < 2; eye++) {\n"
     "        float disp = (eye == 0) ? u_dispTexels : -u_dispTexels;\n"
     "        float here = texelFetch(u_depth, ivec2(x, y), 0).a;\n"
@@ -264,6 +289,9 @@ const char* const OFFSET_FRAGMENT_SRC =
     "                if (rd > bestD) {\n"
     "                    bestD = rd;\n"
     "                    bestOff = float(t - 1) + f;\n"
+    // One source-texel interval covers span destination texels. Only flag
+    // expansion on the winning surface; a nearer crossing takes precedence.
+    "                    gap[eye] = span > 1.25 && abs(cd - pd) > 0.04 ? 1.0 : 0.0;\n"
     "                }\n"
     "            }\n"
     "            pd = cd;\n"
@@ -271,7 +299,7 @@ const char* const OFFSET_FRAGMENT_SRC =
     "        }\n"
     "        result[eye] = bestOff;\n"
     "    }\n"
-    "    fragColor = vec4(result / (2.0 * float(reach)) + 0.5, 0.0, 1.0);\n"
+    "    fragColor = vec4(result / (2.0 * float(reach)) + 0.5, gap);\n"
     "}\n";
 
 // Feeds the depth model. The video is far larger than the map, so a single

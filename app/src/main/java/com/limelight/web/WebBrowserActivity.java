@@ -33,10 +33,11 @@ import java.util.List;
 public final class WebBrowserActivity extends LocalizedActivity implements GeckoSession.NavigationDelegate {
     private static final int WATCH_VIDEO = 1;
     private GeckoView browser;
-    private HorizontalScrollView toolbar;
+    private LinearLayout toolbar;
     private LinearLayout actions;
     private TextView origin;
     private Button watch;
+    private Button fullscreenMenu;
     private WebVideoTab tab;
     private boolean canGoBack;
     private String location = WebVideoTab.BILIBILI;
@@ -47,10 +48,14 @@ public final class WebBrowserActivity extends LocalizedActivity implements Gecko
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
         root.addView(column);
-        toolbar = new HorizontalScrollView(this);
+        toolbar = new LinearLayout(this);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        toolbar.addView(menuButton());
+        HorizontalScrollView shortcuts = new HorizontalScrollView(this);
+        toolbar.addView(shortcuts, new LinearLayout.LayoutParams(0, -2, 1));
         actions = new LinearLayout(this);
         actions.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.addView(actions);
+        shortcuts.addView(actions);
         column.addView(toolbar);
         addSite(getString(R.string.web_bilibili), WebVideoTab.BILIBILI);
         addSite("YouTube", WebVideoTab.YOUTUBE);
@@ -73,6 +78,8 @@ public final class WebBrowserActivity extends LocalizedActivity implements Gecko
         watch.setText(R.string.web_watch_3d);
         watch.setOnClickListener(v -> enterXr());
         root.addView(watch, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
+        fullscreenMenu = menuButton();
+        root.addView(fullscreenMenu, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START));
         setContentView(root);
 
         tab = (WebVideoTab) getLastNonConfigurationInstance();
@@ -88,6 +95,13 @@ public final class WebBrowserActivity extends LocalizedActivity implements Gecko
         if (WebVideoTab.presenting(tab.id) == null) browser.setSession(tab.session);
         if (newTab) tab.session.loadUri(location);
         updateUi();
+    }
+
+    private Button menuButton() {
+        Button menu = new Button(this);
+        menu.setText(R.string.back_menu);
+        menu.setOnClickListener(v -> finish());
+        return menu;
     }
 
     private void addSite(String label, String url) {
@@ -146,6 +160,7 @@ public final class WebBrowserActivity extends LocalizedActivity implements Gecko
             return;
         }
         toolbar.setVisibility(tab.fullscreen ? View.GONE : View.VISIBLE);
+        fullscreenMenu.setVisibility(tab.fullscreen ? View.VISIBLE : View.GONE);
         watch.setVisibility(tab.fullscreen ? View.VISIBLE : View.GONE);
         watch.setEnabled(WebVideoTab.presenting(tab.id) == null);
         origin.setText(Uri.parse(location).getHost());

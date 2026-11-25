@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.8 — 2026-11-25
+
+- 网页视频转 3D、Quest 窗口播放、默认启用新版边缘填充、中英文界面。
+- Web video in 3D, Quest windowed playback, corrected stereo gap filling by default, and English or Simplified Chinese UI.
+- [完整更新说明 / Full release notes](.github/release-notes/v0.8.md)
+
 ## v0.7 — 2026-10-25
 
 - **自定义 SMB 端口 / Custom SMB ports**：新增可选端口栏（1–65535），留空使用 445。旧连接和默认端口的图片历史保持兼容；保存的连接按端口区分。The optional port defaults to 445, preserving legacy targets and image history; saved targets distinguish different ports.

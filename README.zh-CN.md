@@ -2,13 +2,16 @@
 
 [English](README.md) | **简体中文**
 
-**Quest 3D 实验分支**（`experiment/quest-window-3d`）。点击首页齿轮，在 **通用 → 3D 播放模式** 中选择沉浸式 3D（默认）或窗口 3D。选择会在下次打开本地或 SMB 图片、视频，或在支持的网页上全屏播放视频时生效。沉浸式播放默认使用透视场景，两种模式均默认启用新版边缘填充。系统首选语言为中文时，应用使用简体中文；其他语言使用英文。在 **通用 → 语言** 中手动选择后，以保存的选择为准。
+XR 3D Viewer 是一款开源 Android/OpenXR 媒体播放器，可在一体式头显上把普通照片和视频转换成立体 3D。支持本地文件、SMB/NAS 共享和网页视频。
 
-实验版可与主版本并装。窗口 3D 需要设备支持 Meta VR OS SDK 207 或更高版本。 [Meta 立体表面合成文档](https://developers.meta.com/vr/documentation/android-apps/stereo-surface-composition/)
+[下载 v0.8 正式版 APK](https://github.com/NeoNatural/xr-3d-viewer/releases/download/v0.8/xr-3d-viewer-v0.8.apk)
 
-XR 3D Viewer 是一款开源的 Android/OpenXR 媒体查看器，可在一体式头显上将普通的
-2D 照片和视频转换成立体 3D。媒体既可以从本地存储打开，也可以直接从 SMB/NAS
-共享中流式读取；无需桌面端配套程序、云端上传或预先转换。
+## v0.8 更新
+
+- **网页视频转 3D。** 在首页打开 **在线视频**，选择哔哩哔哩、YouTube，或点 **输入网址**。将支持的视频切到网页全屏，再点 **转 3D**。点 **返回主菜单** 可直接回到媒体库。头显支持时可勾选 **每眼 4K** 提高渲染分辨率，片源清晰度由网站决定。
+- **选择播放模式。** 在首页齿轮 → **通用 → 3D 播放模式** 中选择沉浸式或窗口 3D，下次播放本地、SMB 媒体或支持的网页视频时生效。全新安装默认进入沉浸式 3D 并使用透视场景。窗口 3D 在 Quest 系统窗口内播放，需要 Meta VR OS SDK 207 或更高版本。本地与 SMB 窗口视频的每眼长边可选 1920、2560 或 3840 像素。
+- **减少轮廓边缘的亮色锯齿。** 新版填充算法默认开启，利用原始分辨率的颜色填补立体位移后露出的区域。可暂停在高对比度画面，通过 **3D → 边缘修正** 切回原算法对比。图片和视频分别记住选择。
+- **切换中文或英文。** 首次启动时，系统首选语言为中文就显示简体中文，其他语言显示英文。在 **通用 → 语言** 中手动选择后，以保存的语言为准。
 
 本项目基于 [Moonlight XR](https://github.com/Gilleece/moonlight-android-xr)
 和 [Moonlight for Android](https://github.com/moonlight-stream/moonlight-android)。
@@ -23,7 +26,7 @@ XR 3D Viewer 是一款开源的 Android/OpenXR 媒体查看器，可在一体式
 - 直接连接 SMB 2/3 共享；保存的凭据由 Android Keystore 加密。
 - 使用预处理的 Depth Anything V2 深度查看 JPEG、PNG 和 WebP 图像。
 - 通过 Android MediaCodec/Media3 播放 MP4、MKV、WebM、M4V 和 MOV。
-- 使用 MiDaS Small 和基于深度图像的渲染着色器，将解码后的视频帧实时转换为立体画面。
+- 使用 ZipDepth 或 MiDaS Small 和基于深度图像的渲染着色器，将解码后的视频帧实时转换为立体画面。
 - 在 VR 内移动和缩放虚拟屏幕、调整立体视差、交换左右眼，并选择透视模式或内置环境。
 - 根据头显支持情况使用控制器、手势追踪或注视操作。
 
@@ -69,8 +72,8 @@ XR 3D Viewer 是一款开源的 Android/OpenXR 媒体查看器，可在一体式
 
 ```text
 Media3/MediaCodec -> SurfaceTexture（外部 OES 纹理）
-                  -> 256x256 推理输入
-                  -> 独立 LiteRT 线程上的 MiDaS Small
+                  -> 深度模型所需尺寸的输入
+                  -> 独立 LiteRT 线程上的 ZipDepth 或 MiDaS Small
                   -> 边缘引导的深度上采样
                   -> 分眼遮挡感知变形
                   -> OpenXR 合成层
@@ -85,7 +88,7 @@ Media3/MediaCodec -> SurfaceTexture（外部 OES 纹理）
 已签名 APK，然后使用 Meta Quest Developer Hub、SideQuest 或 ADB 侧载：
 
 ```sh
-adb install -r xr-3d-viewer-v0.5.apk
+adb install -r xr-3d-viewer-v0.8.apk
 ```
 
 Android 会拒绝安装未签名的 Release APK。正式发布的附件在上传前均由 CI 验证，并附带
@@ -95,7 +98,7 @@ SHA-256 校验文件。
 
 1. 在头显上启动 **XR Media Viewer**。
 2. 选择 **Browse local photos and videos**（浏览本地照片和视频）或
-   **Browse SMB photos and videos**（浏览 SMB 照片和视频）。
+   **Browse SMB photos and videos**（浏览 SMB 照片和视频），也可选择 **在线视频** 打开网站。
 3. 浏览本地媒体时，通过 Android 文件夹选择器授予文件夹读取权限；使用 SMB 时，输入
    NAS 主机和凭据。Share 留空时列出文件共享，填写时直接进入指定共享。Port 为可选端口，
    留空使用 445；手机共享或其他使用自定义端口的服务器可填写实际端口（例如 1445）。
@@ -103,7 +106,7 @@ SHA-256 校验文件。
 4. 选择一张图像或一个视频。同一文件夹内的其他受支持文件会成为上一个/下一个播放项。
 5. 打开 **Media Settings**（媒体设置），调整深度更新频率、左右眼顺序、透视模式和性能诊断。
 
-左右手摇杆都支持切换上一张/下一张图片，或让视频后退/前进 10 秒。抓握画布时仍用于
+沉浸模式下，左右手摇杆都支持切换上一张/下一张图片，或让视频后退/前进 10 秒。抓握画布时仍用于
 调整距离和缩放；松开后需让摇杆回中再操作媒体。顶部控制条悬停显示；浏览器返回图标
 在根目录可回到主菜单。
 
@@ -114,8 +117,9 @@ TB 等单位之间自动切换，最多保留一位小数，显示数值始终�
 视频进度条下方显示“已播放时长 / 总时长”，不足一小时显示 `分:秒`，一小时起显示
 `时:分:秒`。
 
-v0.5 使用独立包名 `com.liang.xrmediaviewer`，可与 Moonlight XR 同时安装。旧包中的 NAS
-配置和偏好需要重新填写。完整更新内容见 [CHANGELOG.md](CHANGELOG.md)。
+v0.8 正式 APK 沿用 v0.7 的包名 `com.liang.xrmediaviewer`。覆盖安装官方 v0.7 可保留设置和已保存的 NAS 连接。实验调试版独立安装。
+
+[版本记录](CHANGELOG.md)
 
 SMB 凭据不会离开设备。保存的密码使用应用专属的 Android Keystore AES-GCM 密钥加密。
 只有用户明确要求时才会创建错误报告；除非维护者在构建时配置了报告接收端点，否则报告仅

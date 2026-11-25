@@ -2,14 +2,16 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-**Quest 3D experiment** (`experiment/quest-window-3d`). From the home screen, open the gear and choose **General → 3D playback mode**. Immersive 3D is the default. Select Windowed 3D to open local and SMB photos or videos, and supported full-screen web videos, in a system window. The choice takes effect the next time you open media. Immersive playback starts in passthrough, and both modes use the corrected gap fill by default. A Chinese system language selects Simplified Chinese. Other system languages select English. A choice in **General → Language** takes precedence.
+XR 3D Viewer turns ordinary photos and videos into stereoscopic 3D on a standalone Android/OpenXR headset. Open media from local storage, an SMB/NAS share or a supported website.
 
-The experimental app installs alongside the main app. Windowed 3D requires Meta VR OS SDK 207 or later. [Meta stereo surface composition guide](https://developers.meta.com/vr/documentation/android-apps/stereo-surface-composition/)
+[Download the signed v0.8 APK](https://github.com/NeoNatural/xr-3d-viewer/releases/download/v0.8/xr-3d-viewer-v0.8.apk)
 
-An open-source Android/OpenXR media viewer that turns ordinary 2D photos and
-videos into stereoscopic 3D on a standalone headset. Media can be opened from
-local storage or streamed directly from an SMB/NAS share; no desktop companion,
-cloud upload, or pre-conversion step is required.
+## New in v0.8
+
+- **Watch web videos in 3D.** Open **Online videos**, choose Bilibili or YouTube, or select **Enter URL**. Put a supported video into fullscreen and select **Watch in 3D**. **Back to menu** returns directly to the library. **4K per eye** requests a higher render resolution when the headset supports it. Stream quality depends on the site.
+- **Choose where to watch.** Use the home-screen gear → **General → 3D playback mode**. Local and SMB media, plus supported web videos, open in the selected mode on the next playback. Immersive 3D starts in passthrough on a fresh install. Windowed 3D plays inside a Quest system window and requires Meta VR OS SDK 207 or later. Local and SMB windowed videos offer 1920, 2560 or 3840 pixels on the long edge per eye.
+- **Reduce bright fringes around moving edges.** The new default gap fill uses full-resolution color to fill areas exposed by the stereo shift. Pause on a high-contrast edge and toggle **3D → Edge correction** to compare it with the original algorithm. The app remembers the choice separately for photos and videos.
+- **Switch between English and Simplified Chinese.** The first launch uses Simplified Chinese when the headset’s primary language is Chinese, and English otherwise. Choose **General → Language** to save your own preference.
 
 The project is based on [Moonlight XR](https://github.com/Gilleece/moonlight-android-xr)
 and [Moonlight for Android](https://github.com/moonlight-stream/moonlight-android).
@@ -27,7 +29,7 @@ SMB media playback the primary application.
   Android Keystore.
 - View JPEG, PNG, and WebP images with prepared Depth Anything V2 depth.
 - Play MP4, MKV, WebM, M4V, and MOV through Android MediaCodec/Media3.
-- Convert decoded video frames to stereo in real time with MiDaS Small and a
+- Convert decoded video frames to stereo in real time with ZipDepth or MiDaS Small and a
   depth-image-based rendering shader.
 - Move and resize the virtual screen, tune stereo separation, swap eyes, and
   select passthrough or a bundled environment without leaving VR.
@@ -69,18 +71,18 @@ Still images use a higher-detail prepared-depth path:
 image -> Depth Anything V2 Small (518x518)
       -> edge-aware depth preparation
       -> per-eye depth warp
-      -> OpenXR composition layers
+      -> OpenXR composition layers or a Quest stereo window
 ```
 
 Videos stay on the GPU decode path and use a lower-latency model:
 
 ```text
-Media3/MediaCodec -> SurfaceTexture (external OES texture)
-                  -> 256x256 inference input
-                  -> MiDaS Small on a dedicated LiteRT thread
+Media3/MediaCodec or web compositor -> SurfaceTexture (external OES texture)
+                  -> model-sized inference input
+                  -> ZipDepth or MiDaS Small on a dedicated LiteRT thread
                   -> edge-guided depth upsample
                   -> per-eye occlusion-aware warp
-                  -> OpenXR composition layers
+                  -> OpenXR composition layers or a Quest stereo window
 ```
 
 Monocular 2D-to-3D reconstruction cannot reveal pixels hidden behind objects.
@@ -95,7 +97,7 @@ Download the signed APK from the repository's
 it with Meta Quest Developer Hub, SideQuest, or ADB:
 
 ```sh
-adb install -r xr-3d-viewer-v0.5.apk
+adb install -r xr-3d-viewer-v0.8.apk
 ```
 
 Android refuses unsigned release APKs. Official release assets are verified by
@@ -104,7 +106,7 @@ CI before publication and are accompanied by a SHA-256 checksum.
 ## Usage
 
 1. Launch **XR Media Viewer** on the headset.
-2. Choose **Browse local photos and videos** or **Browse SMB photos and videos**.
+2. Choose **Browse local photos and videos** or **Browse SMB photos and videos**, or open **Online videos** for a website.
 3. For local media, grant read access to a folder through Android's folder
    picker. For SMB, enter the NAS host and credentials; leave Share blank to list
    shared folders or fill it in to open a specific share. Port is optional and
@@ -115,7 +117,7 @@ CI before publication and are accompanied by a SHA-256 checksum.
 5. Open **Media Settings** to adjust depth cadence, eye order, passthrough, and
    performance diagnostics.
 
-Use either controller's stick to go to the previous/next image or seek video
+In immersive mode, use either controller's stick to go to the previous/next image or seek video
 back/forward 10 seconds. Canvas grabbing retains stick distance/scale adjustment;
 release and center the sticks before navigating media. The top controls appear
 on hover, and the browser Back icon returns to the main menu at the root.
@@ -128,9 +130,9 @@ File sizes use decimal B/KB/MB/GB/TB units with up to one decimal and values bel
 The video seek bar shows elapsed / total time below the track, using `mm:ss` for
 times under one hour and `h:mm:ss` for longer times.
 
-v0.5 uses `com.liang.xrmediaviewer`, allowing installation alongside Moonlight XR.
-NAS profiles and preferences from the former package must be entered again.
-See [CHANGELOG.md](CHANGELOG.md) for release details.
+The signed v0.8 APK uses the same application ID as v0.7 (`com.liang.xrmediaviewer`). Install it over the official v0.7 release to keep your settings and saved NAS connections. Experimental debug builds are separate installs.
+
+[Changelog](CHANGELOG.md)
 
 SMB credentials never leave the device. Saved passwords are encrypted with an
 app-owned Android Keystore AES-GCM key. Bug reports are only created when the

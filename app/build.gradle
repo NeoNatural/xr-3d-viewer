@@ -97,6 +97,10 @@ def generateXrShared = tasks.register('generateXrShared', GenerateXrShared) {
 }
 
 androidComponents {
+    // Official releases upgrade the production app. Keep the experimental debug installs separate.
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.applicationId.set(variant.flavorName == "root" ? "com.liang.xrmediaviewer.root" : "com.liang.xrmediaviewer")
+    }
     onVariants(selector().all()) { variant ->
         variant.sources.java.addGeneratedSourceDirectory(generateXrShared, { it.outputDir })
     }
@@ -117,8 +121,8 @@ android {
         minSdk 23
         targetSdk 36
 
-        versionName "12.1-xr0.7"
-        versionCode = 31407
+        versionName "12.1-xr0.8"
+        versionCode = 31408
 
         // Generate native debug symbols to allow Google Play to symbolicate our native crashes
         ndk.debugSymbolLevel = 'FULL'
@@ -235,8 +239,8 @@ android {
         release {
             // This fork ships under its own applicationId, so the unofficial
             // suffix upstream asks forks to keep is no longer needed.
-            resValue "string", "app_label", "XR Media Viewer · Window 3D"
-            resValue "string", "app_label_root", "XR Media Viewer · Window 3D (Root)"
+            resValue "string", "app_label", "XR Media Viewer"
+            resValue "string", "app_label_root", "XR Media Viewer (Root)"
 
             if (canSign) {
                 signingConfig signingConfigs.release
